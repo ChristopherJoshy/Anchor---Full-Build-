@@ -342,7 +342,7 @@ import { createAnchorSDK } from "anchor-sdk";
 const anchor = createAnchorSDK();
 
 // Safety path — pure, synchronous, deterministic.
-const verdict: Verdict = anchor.evaluate(sensorWindow, previousVerdict);
+const verdict: Verdict = anchor.evaluate(sensorWindow, previousState);
 
 // Advisory path — async, lazy-loaded, fully on-device (ExecuTorch / XNNPACK).
 const explanation = await anchor.explain(verdict);   // "Fix denied: position jumped 1.2 km in one second."
@@ -354,7 +354,7 @@ const vector      = await anchor.embed("signal looked synthetic"); // number[] f
 
 | Method | Signature | Engine | Notes |
 | --- | --- | --- | --- |
-| `evaluate` | `(window: SensorWindow, prevState?: Verdict) => Verdict` | six pure checks + weighted RAIM/FDE state machine | synchronous, no I/O; same window + previous state → same verdict |
+| `evaluate` | `(window: SensorWindow, prevState?: IntegrityState) => Verdict` | six pure checks + weighted RAIM/FDE state machine | synchronous, no I/O; same window + previous state → same verdict |
 | `explain` | `(verdict: Verdict) => Promise<string>` | Llama-3.2-1B quantized (ExecuTorch, XNNPACK) | 1–2 plain sentences; type-level guarantee it never touches state |
 | `transcribe` | `(audio: Float32Array) => Promise<string>` | whisper-base.en (ExecuTorch, XNNPACK) | 16 kHz mono PCM; powers the fixed voice-command set |
 | `embed` | `(text: string) => Promise<number[]>` | multi-qa-mpnet-base-v2 (ExecuTorch, XNNPACK) | powers semantic event-log search |
