@@ -48,7 +48,7 @@ export default function DashboardScreen() {
     startupLog(`dashboard mounted: location=${decisions.location} mic=${decisions.mic}`);
   }, [decisions.location, decisions.mic]);
 
-  const { sdk, injectSpoof, mock, recoveryDemo, reset, recordNetwork, mockEnabled, toggleMockEnabled, detMs, telemetry, lastMock } = pipeline;
+  const { sdk, injectSpoof, runScenario, recoveryDemo, reset, recordNetwork, demoArmed, toggleDemoArmed, detMs, telemetry, lastScenario } = pipeline;
 
   // Real network-integrity signals (native VPN probe + IP↔GPS divergence).
   const net = useNetworkIntelligence(
@@ -294,27 +294,27 @@ export default function DashboardScreen() {
       />
 
       {/* TEST HARNESS — disarmed by default; armed frames run the REAL pipeline */}
-      <View style={styles.mockPanel}>
-        <View style={styles.mockHeader}>
-          <Text style={styles.mockTitle}>TEST HARNESS — ATTACK STAGING</Text>
+      <View style={styles.harnessPanel}>
+        <View style={styles.harnessHeader}>
+          <Text style={styles.harnessTitle}>DEMO CONTROLS — ATTACK STAGING</Text>
           <View style={styles.armRow}>
-            <Text style={[styles.armLabel, mockEnabled && styles.armLabelOn]}>
-              {mockEnabled ? 'ARMED' : 'LIVE SENSORS ONLY'}
+            <Text style={[styles.armLabel, demoArmed && styles.armLabelOn]}>
+              {demoArmed ? 'DEMO ARMED' : 'LIVE SENSORS ONLY'}
             </Text>
             <Switch
-              value={mockEnabled}
-              onValueChange={toggleMockEnabled}
+              value={demoArmed}
+              onValueChange={toggleDemoArmed}
               trackColor={{ false: colors.chrome, true: colors.trusted }}
               thumbColor="#E8EDF2"
             />
           </View>
         </View>
-        <Text style={styles.mockHint}>
-          {mockEnabled
+        <Text style={styles.harnessHint}>
+          {demoArmed
             ? 'Frames enter the same evaluate() path as live GPS — every gauge and state change is real physics.'
             : 'Disabled: all values are live sensors. Arm only to stage attacks that cannot be performed live.'}
         </Text>
-        <View style={[styles.mockGrid, !mockEnabled && styles.mockGridDisabled]}>
+        <View style={[styles.harnessGrid, !demoArmed && styles.harnessGridDisabled]}>
           {[
             { k: 'teleport' as const, label: 'TELEPORT', desc: 'kinematic → DEGRADED' },
             { k: 'attack' as const, label: 'ATTACK', desc: 'kin+cn0 → DENIED' },
@@ -328,22 +328,22 @@ export default function DashboardScreen() {
             return (
               <Pressable
                 key={m.k}
-                onPress={() => mock(kind)}
-                disabled={!mockEnabled}
-                style={[styles.mockBtn, lastMock === kind && mockEnabled && styles.mockBtnActive]}
+                onPress={() => runScenario(kind)}
+                disabled={!demoArmed}
+                style={[styles.harnessBtn, lastScenario === kind && demoArmed && styles.harnessBtnActive]}
                 accessibilityRole="button"
                 accessibilityLabel={`Stage ${m.label}`}
               >
-                <Text style={styles.mockBtnLabel}>{m.label}</Text>
-                <Text style={styles.mockBtnDesc}>{m.desc}</Text>
+                <Text style={styles.harnessBtnLabel}>{m.label}</Text>
+                <Text style={styles.harnessBtnDesc}>{m.desc}</Text>
               </Pressable>
             );
           })}
         </View>
         <Pressable
           onPress={recoveryDemo}
-          disabled={!mockEnabled}
-          style={[styles.recoveryBtn, !mockEnabled && styles.mockGridDisabled]}
+          disabled={!demoArmed}
+          style={[styles.recoveryBtn, !demoArmed && styles.harnessGridDisabled]}
           accessibilityRole="button"
           accessibilityLabel="Run recovery demonstration"
         >
@@ -364,7 +364,7 @@ export default function DashboardScreen() {
         onSpoof={injectSpoof}
         onReset={reset}
         onShowReason={() => setReasonPanel(true)}
-        spoofDisabled={!mockEnabled}
+        spoofDisabled={!demoArmed}
       />
 
       {/* SHOW REASON panel — last model explanation inline */}
@@ -548,7 +548,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.chrome,
     marginVertical: spacing.sm,
   },
-  mockPanel: {
+  harnessPanel: {
     backgroundColor: colors.panelBg,
     borderTopWidth: hairline,
     borderTopColor: colors.chrome,
@@ -556,12 +556,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
-  mockHeader: {
+  harnessHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  mockTitle: {
+  harnessTitle: {
     ...monoNumericBold,
     fontSize: 10,
     letterSpacing: 1.5,
@@ -581,21 +581,21 @@ const styles = StyleSheet.create({
   armLabelOn: {
     color: colors.trusted,
   },
-  mockHint: {
+  harnessHint: {
     ...monoNumeric,
     fontSize: 8,
     lineHeight: 12,
     color: colors.textMuted,
   },
-  mockGrid: {
+  harnessGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
   },
-  mockGridDisabled: {
+  harnessGridDisabled: {
     opacity: 0.4,
   },
-  mockBtn: {
+  harnessBtn: {
     width: '23%',
     minWidth: 72,
     borderWidth: hairline,
@@ -606,17 +606,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 1,
   },
-  mockBtnActive: {
+  harnessBtnActive: {
     borderColor: colors.caution,
     backgroundColor: 'rgba(255,179,0,0.08)',
   },
-  mockBtnLabel: {
+  harnessBtnLabel: {
     ...monoNumericBold,
     fontSize: 10,
     letterSpacing: 1,
     color: colors.textPrimary,
   },
-  mockBtnDesc: {
+  harnessBtnDesc: {
     ...monoNumeric,
     fontSize: 7,
     letterSpacing: 0.5,

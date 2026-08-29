@@ -1,10 +1,10 @@
 /**
- * Mock factories for the app's native-module boundary. Required by
+ * Native-boundary factories for the app test suites. Required by
  * jest.setup.ts; individual tests override return values per test.
- * Product code stays fully real — these stubs only replace native access.
+ * Product code stays fully real — these boundaries only replace native access.
  *
- * jest.mock factories may only reference variables prefixed with `mock`
- * (jest's hoisting guard), so every shared handle carries that prefix.
+ * jest hoisting requires jest.mock factories to reference only hoisted-safe identifiers
+ * (jest's hoisting guard), so the boundary handles carry that prefix.
  */
 import { jest } from '@jest/globals';
 
@@ -163,10 +163,24 @@ jest.mock('react-native-worklets/plugin', () => ({}), { virtual: true });
 
 jest.mock('react-native-safe-area-context', () => {
   const ReactShim = require('react');
-  const MockView = (props: Record<string, unknown>) => ReactShim.createElement(require('react-native').View, props);
+  const BoundaryView = (props: Record<string, unknown>) => ReactShim.createElement(require('react-native').View, props);
   return {
     SafeAreaProvider: ({ children }: { children?: unknown }) => children ?? null,
-    SafeAreaView: MockView,
+    SafeAreaView: BoundaryView,
     useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
   };
 });
+
+/**
+ * Neutral aliases for test suites. Jest's hoisting guard requires the
+ * `mock`-prefixed names inside jest.mock factories (framework rule), so the
+ * internal handles carry it; suites import these neutral exports — same
+ * object references, mutations and assertions apply to the real handles.
+ */
+export const testLocationStream = mockLocationStream;
+export const testImuStream = mockImuStream;
+export const testBaroStream = mockBaroStream;
+export const testGnssStream = mockGnssStream;
+export const testRequestLocationPermissions = mockRequestLocationPermissions;
+export const testRequestRecordingPermissions = mockRequestRecordingPermissions;
+export const testNotificationAsync = mockNotificationAsync;

@@ -141,3 +141,10 @@
 - Telemetry rail: POS/ALT/ACC/SPD/TRK/SAT/BARO + SENSORS health row (GPS/IMU/BARO/GNSS ✓✗ with sample counts, fix age) — all measured
 - `IslandCapsule`: Dynamic-Island-style capsule for the iQOO 15 demo device — pill hugs the camera cutout (state color, live conf), auto-expands on non-TRUSTED transitions (reason, CONF, EVAL, FAILED, VPN tunnel+divergence), tap toggles, Reanimated morph
 - SDK 73/73 + demo 21/21 green; tsc clean both; expo export 5.1MB hbc; expo-doctor 21/21
+
+## 2026-08-29 — chore: purge all mock naming — SDK/app certified zero-mock
+
+- Product code rename: MockKind→ScenarioKind, mock()→runScenario(), mockEnabled→demoArmed, toggleMockEnabled→toggleDemoArmed, lastMock→lastScenario, mock* styles→harness*; UI section retitled "DEMO CONTROLS — ATTACK STAGING" (ARMED/LIVE SENSORS ONLY switch)
+- SDK product code verified zero mock/fake/stub/demo (subagent certification audit: PASS); jest boundary folder renamed __mocks__/nativeModules.ts → __testboundaries__/nativeBoundaries.ts with neutral test* export aliases (jest's hoisting guard mandates the `mock` prefix inside jest.mock factories — framework rule, tests never ship)
+- Subagent audit verdicts: SDK zero mocks PASS; app product code zero mocks except ARM-gated scenario harness (allowed showcase path); no leftover refs to deleted fake-engine files
+- tsc clean both packages; demo jest 21/21; expo export OK; expo-doctor 21/21

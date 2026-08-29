@@ -1,10 +1,10 @@
 /**
  * useAnchorPipeline — app-side wiring of the anchor-sdk integrity pipeline.
  *
- * NO mock data paths anywhere: the six physics checks, the RAIM/FDE machine,
+ * NO simulated data paths anywhere: the six physics checks, the RAIM/FDE machine,
  * telemetry, timing, and every displayed number come from the real sensor
- * streams and the real SDK output. The only synthetic input in the entire app
- * is the labeled TEST HARNESS (attack-scenario frames), which is DISARMED by
+ * streams and the real SDK output. The only staged input in the entire app
+ * is the labeled DEMO CONTROLS harness (attack-scenario frames), which is DISARMED by
  * default and exists purely to stage spoofing attacks that cannot be performed
  * live. Armed frames enter the SAME sdk.evaluate() path as live GPS — the
  * pipeline never knows the difference and nothing else is ever substituted.
@@ -30,7 +30,7 @@ export const WINDOW_BARO_CAP = 60;
 export const WINDOW_GNSS_CAP = 12;
 
 /** Attack-scenario kinds for the armed TEST HARNESS (presentation stimulus only). */
-export type MockKind =
+export type ScenarioKind =
   | 'teleport'
   | 'cno'
   | 'altitude'
@@ -197,9 +197,9 @@ export function useAnchorPipeline() {
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [events, setEvents] = useState<EventLogEntry[]>([]);
   const [spoofing, setSpoofing] = useState(false);
-  const [lastMock, setLastMock] = useState<MockKind | null>(null);
+  const [lastScenario, setLastScenario] = useState<ScenarioKind | null>(null);
   // Test harness is DISARMED by default: with it off, the app is 100% live sensors.
-  const [mockEnabled, setMockEnabled] = useState(false);
+  const [demoArmed, setDemoArmed] = useState(false);
   const [detMs, setDetMs] = useState<number | null>(null);
   const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
 
@@ -383,7 +383,7 @@ export function useAnchorPipeline() {
     return () => clearInterval(id);
   }, [evaluateNow]);
 
-  const toggleMockEnabled = useCallback(() => setMockEnabled((v) => !v), []);
+  const toggleDemoArmed = useCallback(() => setDemoArmed((v) => !v), []);
 
   const queueAttack = useCallback((fixes: Fix[], epochs: GnssMeasurementSample[]) => {
     if (spoofFixesRef.current.length > 0 || spoofGnssRef.current.length > 0) {
@@ -405,19 +405,19 @@ export function useAnchorPipeline() {
 
   /** TEST HARNESS (armed only): full compound attack — teleport + lockstep C/N0. */
   const injectSpoof = useCallback(() => {
-    if (!mockEnabled) return;
+    if (!demoArmed) return;
     setSpoofing(true);
-    setLastMock('compound');
+    setLastScenario('compound');
     const base = fixesRef.current[fixesRef.current.length - 1] ?? defaultFix();
     queueAttack(buildSpoofFixes(base, 5), attackEpochs(5));
-  }, [mockEnabled, queueAttack, attackEpochs]);
+  }, [demoArmed, queueAttack, attackEpochs]);
 
   /** TEST HARNESS (armed only): single-fault scenarios, one per physics check. */
-  const mock = useCallback(
-    (kind: MockKind) => {
-      if (!mockEnabled) return;
+  const runScenario = useCallback(
+    (kind: ScenarioKind) => {
+      if (!demoArmed) return;
       setSpoofing(true);
-      setLastMock(kind);
+      setLastScenario(kind);
       const base = fixesRef.current[fixesRef.current.length - 1] ?? defaultFix();
       switch (kind) {
         case 'teleport':
@@ -443,13 +443,13 @@ export function useAnchorPipeline() {
           break;
       }
     },
-    [mockEnabled, queueAttack, attackEpochs],
+    [demoArmed, queueAttack, attackEpochs],
   );
 
   /** Clear all pipeline state; the next evaluation starts from a fresh machine. */
   const reset = useCallback(() => {
     setSpoofing(false);
-    setLastMock(null);
+    setLastScenario(null);
     spoofFixesRef.current = [];
     spoofGnssRef.current = [];
     fixesRef.current = [];
@@ -475,15 +475,15 @@ export function useAnchorPipeline() {
    * fresh state machine, staged attack drives TRUSTED→DEGRADED→DENIED, the
    * frames then age out of the window, 5 clean evaluations elapse, the machine
    * enters RECOVERING, and the next clean evaluation returns TRUSTED. Nothing
-   * is simulated; the injector only stages the attack.
+   * every transition is the real machine; the harness only stages the attack frames.
    */
   const recoveryDemo = useCallback(() => {
-    if (!mockEnabled) return;
+    if (!demoArmed) return;
     reset();
     setSpoofing(true);
-    setLastMock('compound');
+    setLastScenario('compound');
     queueAttack(buildSpoofFixes(defaultFix(), 5), attackEpochs(5));
-  }, [mockEnabled, reset, queueAttack, attackEpochs]);
+  }, [demoArmed, reset, queueAttack, attackEpochs]);
 
   return {
     // sensor health passthrough for instrument labels
@@ -498,13 +498,13 @@ export function useAnchorPipeline() {
     verdict,
     events,
     spoofing,
-    lastMock,
-    mockEnabled,
-    toggleMockEnabled,
+    lastScenario,
+    demoArmed,
+    toggleDemoArmed,
     detMs,
     telemetry,
     injectSpoof,
-    mock,
+    runScenario,
     recoveryDemo,
     recordNetwork,
     reset,

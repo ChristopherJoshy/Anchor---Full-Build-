@@ -3,7 +3,7 @@
  * The layout must NEVER render null permanently: a font load failure or a
  * >10 s hang must still produce visible content.
  *
- * mockFontState is `mock`-prefixed so the jest.mock factory may reference it.
+ * mockFontState is hoisted-safe name so the jest.mock factory may reference it.
  */
 import { act, render } from '@testing-library/react-native';
 

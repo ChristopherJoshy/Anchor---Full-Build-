@@ -8,11 +8,11 @@ import { act, render, screen, waitFor } from '@testing-library/react-native';
 
 import DashboardScreen from '../app/dashboard';
 import {
-  mockBaroStream,
-  mockGnssStream,
-  mockImuStream,
-  mockLocationStream,
-} from './__mocks__/nativeModules';
+  testBaroStream,
+  testGnssStream,
+  testImuStream,
+  testLocationStream,
+} from './__testboundaries__/nativeBoundaries';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const cleanFixture = require('../../../../packages/anchor-sdk/src/__tests__/fixtures/clean-drive.json') as Fixture;
@@ -36,10 +36,10 @@ interface Fixture {
 
 /** Points the stubbed sensor hooks at fixture frame `i` of `fixture`. */
 function feed(fixture: Fixture, i: number): void {
-  mockLocationStream.fix = fixture.fixes[i];
-  mockImuStream.sample = fixture.imu[i * 8] ?? fixture.imu[fixture.imu.length - 1];
-  mockBaroStream.sample = fixture.baro[Math.min(i, fixture.baro.length - 1)];
-  mockGnssStream.latest = fixture.gnss[i];
+  testLocationStream.fix = fixture.fixes[i];
+  testImuStream.sample = fixture.imu[i * 8] ?? fixture.imu[fixture.imu.length - 1];
+  testBaroStream.sample = fixture.baro[Math.min(i, fixture.baro.length - 1)];
+  testGnssStream.latest = fixture.gnss[i];
 }
 
 const CHECK_LABELS = ['KINEMATIC', 'HEADING', 'TEMPORAL', 'ALTITUDE', 'ENVIRONMENTAL', 'CN0'];

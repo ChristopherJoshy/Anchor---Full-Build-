@@ -1,6 +1,6 @@
 /**
  * Pure-function tests for voice-command matching and semantic search ranking.
- * Both are real product code (no mocks); the hooks' native parts are untouched.
+ * Both are real product code (no test boundaries); the hooks native parts are untouched.
  */
 import { cosineSimilarity } from '../lib/search';
 import { matchCommand, VOICE_COMMANDS } from '../hooks/useVoiceCommands';

@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import {
-  mockRequestLocationPermissions,
-  mockRequestRecordingPermissions,
-} from './__mocks__/nativeModules';
+  testRequestLocationPermissions,
+  testRequestRecordingPermissions,
+} from './__testboundaries__/nativeBoundaries';
 import PrimerScreen from '../app/index';
 
 jest.mock('expo-router', () => ({
@@ -34,19 +34,19 @@ describe('permissions primer', () => {
   });
 
   it('fires the location request then the mic request when Continue is pressed', async () => {
-    mockRequestLocationPermissions.mockResolvedValue({ granted: true });
-    mockRequestRecordingPermissions.mockResolvedValue({ granted: true });
+    testRequestLocationPermissions.mockResolvedValue({ granted: true });
+    testRequestRecordingPermissions.mockResolvedValue({ granted: true });
 
     render(<PrimerScreen />);
     fireEvent.press(await screen.findByText('CONTINUE'));
 
     await waitFor(() => {
-      expect(mockRequestLocationPermissions).toHaveBeenCalledTimes(1);
-      expect(mockRequestRecordingPermissions).toHaveBeenCalledTimes(1);
+      expect(testRequestLocationPermissions).toHaveBeenCalledTimes(1);
+      expect(testRequestRecordingPermissions).toHaveBeenCalledTimes(1);
     });
 
-    const locationOrder = mockRequestLocationPermissions.mock.invocationCallOrder[0];
-    const micOrder = mockRequestRecordingPermissions.mock.invocationCallOrder[0];
+    const locationOrder = testRequestLocationPermissions.mock.invocationCallOrder[0];
+    const micOrder = testRequestRecordingPermissions.mock.invocationCallOrder[0];
     expect(locationOrder).toBeLessThan(micOrder);
   });
 });
