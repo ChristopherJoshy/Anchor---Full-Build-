@@ -26,11 +26,24 @@ import type {
 import { createAnchorSDK } from 'anchor-sdk';
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { measureDeterministic } from '@/lib/hybridEngine';
 
-export const WINDOW_FIX_CAP = 60;
+export const WINDOW_FIX_CAP = 30;
 export const WINDOW_IMU_CAP = 60;
 export const WINDOW_BARO_CAP = 60;
 export const WINDOW_GNSS_CAP = 30;
+
+/** Live sensor readouts for the telemetry rail — all values measured, never synthesized. */
+export interface Telemetry {
+  lat: number;
+  lon: number;
+  alt: number;
+  acc: number;
+  speed: number;
+  bearing: number;
+  sats: number | null;
+  baroHpa: number | null;
+}
 
 /** One flight-recorder line: a pipeline state transition. */
 export interface EventLogEntry {
@@ -179,6 +192,8 @@ export function useAnchorPipeline() {
   const [spoofing, setSpoofing] = useState(false);
   const [vpnActive, setVpnActive] = useState(false);
   const [lastMock, setLastMock] = useState<MockKind | null>(null);
+  const [detMs, setDetMs] = useState<number | null>(null);
+  const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
 
   // Sensor window lives in refs: sensor ticks are far more frequent than
   // renders; only verdict changes re-render the instrument.
@@ -194,6 +209,8 @@ export function useAnchorPipeline() {
   const lastImuTsRef = useRef<number | null>(null);
   const lastBaroTsRef = useRef<number | null>(null);
   const lastGnssTsRef = useRef<number | null>(null);
+  const locationFixRef = useRef<Fix | null>(null);
+  const lastEvalAtRef = useRef(0);
   // Pending SIMULATE SPOOF frames queued by injectSpoof().
   const spoofFixesRef = useRef<Fix[]>([]);
   const spoofGnssRef = useRef<GnssMeasurementSample[]>([]);
@@ -270,15 +287,14 @@ export function useAnchorPipeline() {
     gnssRef.current = pushCapped(gnssRef.current, gnss.latest, WINDOW_GNSS_CAP);
   }, [gnss.latest]);
 
-  // Drive evaluation once per fix (1 Hz). Buffer updates land in refs; only
-  // verdict changes re-render the instrument.
-  useEffect(() => {
-    if (!location.fix) {
-      return;
+  // One evaluation step: absorb new sensor data, drain one queued mock frame,
+  // run the REAL deterministic pipeline with measured timing, record transitions.
+  const evaluateNow = useCallback(() => {
+    const fix = locationFixRef.current;
+    if (fix && (lastFixTsRef.current === null || fix.timestamp !== lastFixTsRef.current)) {
+      lastFixTsRef.current = fix.timestamp;
+      fixesRef.current = pushCapped(fixesRef.current, fix, WINDOW_FIX_CAP);
     }
-    if (lastFixTsRef.current !== null && location.fix.timestamp === lastFixTsRef.current) return;
-    lastFixTsRef.current = location.fix.timestamp;
-    fixesRef.current = pushCapped(fixesRef.current, location.fix, WINDOW_FIX_CAP);
     if (spoofFixesRef.current.length > 0) {
       const [spoofFix, ...rest] = spoofFixesRef.current;
       spoofFixesRef.current = rest;
@@ -289,21 +305,61 @@ export function useAnchorPipeline() {
       spoofGnssRef.current = rest;
       gnssRef.current = pushCapped(gnssRef.current, spoofEpoch, WINDOW_GNSS_CAP);
     }
+    if (fixesRef.current.length === 0) return;
 
-    const v = sdk.evaluate({
-      fixes: fixesRef.current,
-      imu: imuRef.current,
-      baro: baroRef.current,
-      gnss: gnssRef.current,
-    });
+    const { result: v, ms } = measureDeterministic(() =>
+      sdk.evaluate({
+        fixes: fixesRef.current,
+        imu: imuRef.current,
+        baro: baroRef.current,
+        gnss: gnssRef.current,
+      }),
+    );
+    lastEvalAtRef.current = Date.now();
     setVerdict(v);
+    setDetMs(ms);
+
+    // Live telemetry — measured values straight off the sensor window.
+    const lastFix = fixesRef.current[fixesRef.current.length - 1];
+    const lastEpoch = gnssRef.current[gnssRef.current.length - 1];
+    const lastBaro = baroRef.current[baroRef.current.length - 1];
+    setTelemetry({
+      lat: lastFix.latitude,
+      lon: lastFix.longitude,
+      alt: lastFix.altitude,
+      acc: lastFix.accuracy,
+      speed: lastFix.speed,
+      bearing: lastFix.bearing,
+      sats: lastEpoch ? lastEpoch.satellites.length : null,
+      baroHpa: lastBaro ? lastBaro.pressureHpa : null,
+    });
 
     if (lastStateRef.current !== v.state) {
       lastStateRef.current = v.state;
       recordTransition(v);
       hapticForState(v.state);
     }
-  }, [location.fix, sdk, recordTransition, hapticForState]);
+  }, [sdk, recordTransition, hapticForState]);
+
+  // Immediate path: evaluate as soon as a NEW fix lands (real 1 Hz GPS + tests).
+  useEffect(() => {
+    if (!location.fix) return;
+    locationFixRef.current = location.fix;
+    if (lastFixTsRef.current === null || location.fix.timestamp !== lastFixTsRef.current) {
+      evaluateNow();
+    }
+  }, [location.fix, evaluateNow]);
+
+  // Stall-proof 1 Hz tick: keeps status/gauges/mocks alive even when GPS fixes
+  // stop arriving (indoors, denied, stalled provider). Skips when the fix path
+  // just evaluated so the debounce machine advances at ~1 eval/s, not 2.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (Date.now() - lastEvalAtRef.current < 900) return;
+      evaluateNow();
+    }, 1000);
+    return () => clearInterval(id);
+  }, [evaluateNow]);
 
   const queueSpoof = useCallback((fixes: Fix[], epochs: GnssMeasurementSample[]) => {
     if (spoofFixesRef.current.length > 0 || spoofGnssRef.current.length > 0) {
@@ -389,6 +445,8 @@ export function useAnchorPipeline() {
     generationRef.current += 1;
     setVerdict(null);
     setEvents([]);
+    setDetMs(null);
+    setTelemetry(null);
     // Fresh instance resets the SDK-internal recovery-debounce machine.
     setSdk(createAnchorSDK());
   }, []);
@@ -408,6 +466,8 @@ export function useAnchorPipeline() {
     spoofing,
     vpnActive,
     lastMock,
+    detMs,
+    telemetry,
     injectSpoof,
     mock,
     reset,

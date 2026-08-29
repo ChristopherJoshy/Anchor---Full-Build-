@@ -104,15 +104,17 @@ export async function hybridExplain(
 
   if (SHOWCASE_FAKE_QUANTIZED) {
     const fake = fakeQuantizedReasoning(verdict);
-    const { quant } = getFakeTiming();
-    // Simulate quantized inference latency without blocking <300ms
-    await new Promise((r) => setTimeout(r, Math.min(quant, opts?.timeoutMs ?? 280)));
+    const budget = opts?.timeoutMs ?? 280;
+    const t0 = Date.now();
+    // Simulated advisory-inference budget; the returned metric is the REAL elapsed time.
+    await new Promise((r) => setTimeout(r, Math.min(getFakeTiming().quant, budget)));
+    const elapsed = Math.max(1, Date.now() - t0);
     if (EXPLAIN_CACHE.size >= MAX_CACHE) {
       const first = EXPLAIN_CACHE.keys().next().value;
       if (first) EXPLAIN_CACHE.delete(first);
     }
     EXPLAIN_CACHE.set(key, fake);
-    return { reasoning: fake, cached: false, quantizedMs: quant };
+    return { reasoning: fake, cached: false, quantizedMs: elapsed };
   }
 
   const t0 = Date.now();

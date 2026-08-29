@@ -20,7 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { cosineSimilarity } from '@/lib/search';
 import { startupLog } from '@/lib/startupLog';
 import { HybridPanel } from '@/components/HybridPanel';
-import { hybridConfidenceOf, hybridExplain } from '@/lib/hybridEngine';
+import { hybridExplain } from '@/lib/hybridEngine';
 
 
 const CHECK_ORDER: CheckId[] = ['kinematic', 'heading', 'temporal', 'altitude', 'environmental', 'cn0'];
@@ -61,9 +61,11 @@ export default function DashboardScreen() {
     startupLog(`dashboard mounted: location=${decisions.location} mic=${decisions.mic}`);
   }, [decisions.location, decisions.mic]);
 
-  const { sdk, injectSpoof, mock, reset, vpnActive, lastMock } = pipeline;
+  const { sdk, injectSpoof, mock, reset, vpnActive, lastMock, detMs, telemetry } = pipeline;
 
-  // Hybrid deterministic + 2-bit quantized showcase: real verdict + fake quantized reasoning (<300ms)
+  // Deterministic + advisory reasoning showcase. detMs is REAL (measured
+  // evaluate() time from the pipeline); advisory ms is the real elapsed time
+  // of the simulated advisory budget in showcase mode.
   useEffect(() => {
     if (!pipeline.verdict) {
       setHybridReasoning(null);
@@ -72,18 +74,17 @@ export default function DashboardScreen() {
       return;
     }
     let cancelled = false;
-    const detMs = 5 + Math.floor(Math.random() * 8);
     void (async () => {
       const res = await hybridExplain(pipeline.verdict!, sdk);
       if (cancelled) return;
-      const total = detMs + res.quantizedMs;
+      const det = pipeline.detMs ?? 0;
       setHybridReasoning(res.reasoning);
-      setHybridTiming({ deterministicMs: detMs, quantizedMs: res.quantizedMs, totalMs: total });
+      setHybridTiming({ deterministicMs: det, quantizedMs: res.quantizedMs, totalMs: det + res.quantizedMs });
       setHybridCached(res.cached);
-      setHybridConf(hybridConfidenceOf(pipeline.verdict!));
+      setHybridConf(null);
     })();
     return () => { cancelled = true; };
-  }, [pipeline.verdict, sdk]);
+  }, [pipeline.verdict, pipeline.detMs, sdk]);
 
   const onCommand = useCallback(
     (command: 'simulate spoof' | 'reset' | 'show reason') => {
@@ -153,6 +154,33 @@ export default function DashboardScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <StatusStrip verdict={pipeline.verdict} />
+
+      {/* live telemetry rail — measured values, 1 Hz */}
+      {telemetry ? (
+        <View style={styles.telemetryRail}>
+          <View style={styles.telemetryRow}>
+            <Text style={styles.telLabel}>POS</Text>
+            <Text style={styles.telVal}>
+              {Math.abs(telemetry.lat).toFixed(4)}°{telemetry.lat >= 0 ? 'N' : 'S'} {Math.abs(telemetry.lon).toFixed(4)}°{telemetry.lon >= 0 ? 'E' : 'W'}
+            </Text>
+            <Text style={styles.telLabel}>ALT</Text>
+            <Text style={styles.telVal}>{telemetry.alt.toFixed(1)}m</Text>
+            <Text style={styles.telLabel}>ACC</Text>
+            <Text style={[styles.telVal, telemetry.acc > 25 ? styles.telWarn : null]}>{Number.isFinite(telemetry.acc) ? `${telemetry.acc.toFixed(1)}m` : '—'}</Text>
+          </View>
+          <View style={styles.telemetryRow}>
+            <Text style={styles.telLabel}>SPD</Text>
+            <Text style={styles.telVal}>{telemetry.speed.toFixed(1)}m/s</Text>
+            <Text style={styles.telLabel}>TRK</Text>
+            <Text style={styles.telVal}>{telemetry.bearing.toFixed(0)}°</Text>
+            <Text style={styles.telLabel}>SAT</Text>
+            <Text style={[styles.telVal, telemetry.sats !== null && telemetry.sats < 4 ? styles.telWarn : null]}>{telemetry.sats ?? '—'}</Text>
+            <Text style={styles.telLabel}>BARO</Text>
+            <Text style={styles.telVal}>{telemetry.baroHpa !== null ? `${telemetry.baroHpa.toFixed(1)}hPa` : '—'}</Text>
+          </View>
+        </View>
+      ) : null}
+
       {vpnActive ? (
         <View style={styles.vpnBanner}>
           <Text style={styles.vpnTitle}>VPN DETECTED — IP ≠ GPS</Text>
@@ -203,11 +231,11 @@ export default function DashboardScreen() {
         hybridConfidence={hybridConf}
       />
 
-      {/* Mock controls — realtime gauge injection, VPN vs spoof distinction */}
+      {/* Scenario injector — every frame runs through the REAL RAIM/FDE pipeline */}
       <View style={styles.mockPanel}>
         <View style={styles.mockHeader}>
-          <Text style={styles.mockTitle}>MOCK INJECTOR — REALTIME GAUGES</Text>
-          <Text style={styles.mockHint}>VPN ≠ spoof • each mock hits one gauge, gauges show live physics</Text>
+          <Text style={styles.mockTitle}>SCENARIO INJECTOR — REAL PHYSICS</Text>
+          <Text style={styles.mockHint}>1 frame/s through full pipeline</Text>
         </View>
         <View style={styles.mockGrid}>
           {[
@@ -232,7 +260,7 @@ export default function DashboardScreen() {
             </Pressable>
           ))}
         </View>
-        <Text style={styles.mockFoot}>Tap any mock — gauges animate to real check scores in &lt;500ms. VPN correctly keeps GPS TRUSTED.</Text>
+        <Text style={styles.mockFoot}>Frames enter the same evaluate() path as live GPS — gauges and status react to measured physics. VPN keeps GPS TRUSTED (IP ≠ GNSS).</Text>
       </View>
 
       <EventLog events={pipeline.events} />
@@ -303,6 +331,35 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.panelBg,
+  },
+  telemetryRail: {
+    backgroundColor: colors.panelSurface,
+    borderBottomWidth: hairline,
+    borderBottomColor: colors.chrome,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    gap: 2,
+  },
+  telemetryRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 5,
+    flexWrap: 'wrap',
+  },
+  telLabel: {
+    ...monoNumeric,
+    fontSize: 8,
+    letterSpacing: 1,
+    color: colors.textMuted,
+  },
+  telVal: {
+    ...monoNumericBold,
+    fontSize: 11,
+    color: colors.textPrimary,
+    marginRight: spacing.xs,
+  },
+  telWarn: {
+    color: colors.caution,
   },
   vpnBanner: {
     backgroundColor: 'rgba(0,217,163,0.08)',

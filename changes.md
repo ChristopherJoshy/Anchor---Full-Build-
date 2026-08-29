@@ -117,3 +117,14 @@
 - Demo display: `TapeGauge` removes invalid `useDerivedValue<ReactNode>` (was rendering SharedValue object on device) — static `displayScore` + animated column; clamps NaN scores; `SafeAreaProvider` at `_layout.tsx` + `SafeAreaView` in `dashboard.tsx`/`index.tsx` (was hard-coded `paddingTop:72` occluded by notch); `theme.hairline` now `StyleSheet.hairlineWidth` (was 1px thick); overlay scrim now uses inner `Pressable` to allow scroll without closing; dashboard `locationDenied` gated on `permsLoaded`; `BottomBar` surfaces `lastError` and clips NaN cosine scores
 - Demo hooks: `useVoiceCommands` toggle deadlock fixed (now guards on `status` not stale `isStreaming`), adds 10s transcription timeout and resets `allowsRecording`; `usePermissions` adds unmount guard; `useLocation`/`index.tsx` `onContinue` try/finally and de-duplicated navigation; `lib/search` `cosineSimilarity` NaN-safe
 - Tests: `nativeModules` adds `react-native-safe-area-context` mock; `fontGate` now passes with new provider; `TapeGauge` mock still passes; SDK 73/73 + demo 21/21 green; `tsc --noEmit` clean both packages; `expo export --platform android` bundles 1892 modules + 5MB Hermes; `expo-doctor` 21/21
+
+## 2026-08-29 — fix(demo): real metrics, stall-proof status engine, live telemetry rail
+
+- Status freeze fixed: evaluation now runs on BOTH new-fix arrival AND a 1 Hz interval tick (skips if fix path evaluated <900 ms ago) — status/gauges/mocks stay live even when GPS fixes stall (indoors/denied); mock frames drain one per tick instead of one per GPS fix
+- Real metrics: `detMs` measured via `measureDeterministic`/`performance.now` around `sdk.evaluate` (was `5+random(8)` fabricated); advisory `quantizedMs` now real elapsed time (was the chosen random); fabricated ADV% / `hybridConfidenceOf` removed from the panel (CONF = real verdict.confidence)
+- Live telemetry rail: POS lat/lon (4 dp, N/S E/W), ALT, ACC (caution >25 m), SPD, TRK, SAT count (caution <4), BARO hPa — all measured from the sensor window each tick, never synthesized
+- `WINDOW_FIX_CAP` 60 → 30: injected violations age out in ~30 s so TRUSTED→DEGRADED→DENIED→RECOVERING→TRUSTED is visible in a demo window; recovery debounce still 5 clean evals
+- Injector relabeled SCENARIO INJECTOR — REAL PHYSICS (frames enter the same `evaluate()` path as live GPS); VPN banner unchanged (IP ≠ GNSS, GPS stays TRUSTED)
+- primer `paddingTop` 72 → spacing.xl (SafeArea already insets top — double offset removed)
+- Only synthesized element remains the Qwen advisory TEXT (showcase, labeled) — all numbers, states, gauges, telemetry are measured
+- tsc clean both packages; demo jest 21/21 (--runInBand); expo export 5.1MB hbc; expo-doctor 21/21

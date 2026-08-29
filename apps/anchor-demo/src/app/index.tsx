@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.panelBg,
     paddingHorizontal: spacing.xl,
-    paddingTop: 72,
+    paddingTop: spacing.xl,
     paddingBottom: spacing.xl,
   },
   header: {
