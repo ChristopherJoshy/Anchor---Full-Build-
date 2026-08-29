@@ -13,6 +13,7 @@ export interface BottomBarProps {
   voiceStatus: VoiceStatus;
   onToggleMic: () => void;
   lastTranscript: string | null;
+  lastError?: string | null;
   onSearch: (query: string) => void;
   spoofing: boolean;
   onSpoof: () => void;
@@ -40,6 +41,7 @@ export function BottomBar({
   voiceStatus,
   onToggleMic,
   lastTranscript,
+  lastError,
   onSearch,
   spoofing,
   onSpoof,
@@ -65,9 +67,11 @@ export function BottomBar({
         ? 'TRANSCRIBING…'
         : 'MIC';
 
-  const micHint = micDenied
-    ? 'Microphone denied — voice commands disabled'
-    : 'Tap, speak a command: simulate spoof / reset / show reason';
+  const micHint = lastError
+    ? `ERROR: ${lastError}`
+    : micDenied
+      ? 'Microphone denied — voice commands disabled'
+      : 'Tap, speak a command: simulate spoof / reset / show reason';
 
   return (
     <View style={styles.bar}>

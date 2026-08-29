@@ -70,6 +70,7 @@ internal fun constellationName(constellationType: Int): String = when (constella
  * 24-30 onStatusChanged carries the real subsystem status and is forwarded as-is.
  */
 class AnchorGnssModule : Module() {
+    @Volatile
     private var measurementCallback: GnssMeasurementsEvent.Callback? = null
 
     private val deliveryExecutor: Executor by lazy {
@@ -185,22 +186,28 @@ class AnchorGnssModule : Module() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 // Executor overload (API 31+): callbacks are delivered off the main thread.
                 locationManager.registerGnssMeasurementsCallback(deliveryExecutor, callback)
+                emitStatus("ready")
+                promise.resolve(null)
             } else {
                 // Plain overload (API 24-30) delivers on the Looper of the registering
                 // thread, so registration must happen on the main looper.
+                // Promise is resolved inside the posted runnable only after registration succeeds.
                 mainHandler.post {
                     try {
                         locationManager.registerGnssMeasurementsCallback(callback)
+                        mainHandler.post {
+                            emitStatus("ready")
+                            try { promise.resolve(null) } catch (_: Exception) {}
+                        }
                     } catch (e: Exception) {
                         measurementCallback = null
                         Log.e(TAG, "registerGnssMeasurementsCallback failed", e)
                         emitError("E_REGISTRATION_FAILED", "Failed to register GNSS measurement callback: ${e.message}")
-                        promise.reject("E_REGISTRATION_FAILED", "Failed to register GNSS measurement callback: ${e.message}", e)
+                        try { promise.reject("E_REGISTRATION_FAILED", "Failed to register GNSS measurement callback: ${e.message}", e) } catch (_: Exception) {}
                     }
                 }
+                return
             }
-            emitStatus("ready")
-            promise.resolve(null)
         } catch (e: SecurityException) {
             measurementCallback = null
             val message = "ACCESS_FINE_LOCATION is required for raw GNSS measurements and was not granted (SecurityException). Request location permission in the app before calling AnchorGnss.start()."
@@ -250,7 +257,7 @@ class AnchorGnssModule : Module() {
      */
     private fun buildMeasurementPayload(event: GnssMeasurementsEvent): Map<String, Any?> {
         val satellites = event.measurements
-            .filter { it.cn0DbHz > 0.0 }
+            .filter { it.cn0DbHz.isFinite() && it.cn0DbHz > 0.0 }
             .map { measurement ->
                 mapOf<String, Any>(
                     "svid" to measurement.svid,

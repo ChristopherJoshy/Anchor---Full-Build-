@@ -129,12 +129,19 @@ export function useAnchorPipeline() {
   const gnssRef = useRef<GnssMeasurementSample[]>([]);
   const lastStateRef = useRef<IntegrityState | null>(null);
   const eventIdRef = useRef(0);
+  const generationRef = useRef(0);
+  // Dedup refs — ensure each sensor sample is pushed once.
+  const lastFixTsRef = useRef<number | null>(null);
+  const lastImuTsRef = useRef<number | null>(null);
+  const lastBaroTsRef = useRef<number | null>(null);
+  const lastGnssTsRef = useRef<number | null>(null);
   // Pending SIMULATE SPOOF frames queued by injectSpoof().
   const spoofFixesRef = useRef<Fix[]>([]);
   const spoofGnssRef = useRef<GnssMeasurementSample[]>([]);
 
   const recordTransition = useCallback(
     (v: Verdict) => {
+      const gen = generationRef.current;
       const id = (eventIdRef.current += 1);
       const entry: EventLogEntry = {
         id,
@@ -148,12 +155,15 @@ export function useAnchorPipeline() {
       setEvents((prev) => [entry, ...prev]);
 
       // Fire-and-forget AI enrichment; the UI never waits on it.
+      // Generation guard prevents stale promises from overwriting after RESET.
       sdk
         .explain(v)
         .then((explanation: string) => {
+          if (generationRef.current !== gen) return;
           setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, explanation } : e)));
         })
         .catch(() => {
+          if (generationRef.current !== gen) return;
           setEvents((prev) =>
             prev.map((e) => (e.id === id ? { ...e, explanation: '(explanation unavailable)' } : e)),
           );
@@ -161,6 +171,7 @@ export function useAnchorPipeline() {
       sdk
         .embed(v.reason)
         .then((embedding: number[]) => {
+          if (generationRef.current !== gen) return;
           setEvents((prev) => prev.map((e) => (e.id === id ? { ...e, embedding } : e)));
         })
         .catch(() => {});
@@ -178,26 +189,41 @@ export function useAnchorPipeline() {
     void Haptics.notificationAsync(type).catch(() => {});
   }, []);
 
+  // Keep IMU/baro/GNSS windows fresh at their own cadence, deduplicated.
+  useEffect(() => {
+    if (!imu.sample) return;
+    if (lastImuTsRef.current !== null && imu.sample.timestamp === lastImuTsRef.current) return;
+    lastImuTsRef.current = imu.sample.timestamp;
+    imuRef.current = pushCapped(imuRef.current, imu.sample, WINDOW_IMU_CAP);
+  }, [imu.sample]);
+
+  useEffect(() => {
+    if (!baro.sample) return;
+    if (lastBaroTsRef.current !== null && baro.sample.timestamp === lastBaroTsRef.current) return;
+    lastBaroTsRef.current = baro.sample.timestamp;
+    baroRef.current = pushCapped(baroRef.current, baro.sample, WINDOW_BARO_CAP);
+  }, [baro.sample]);
+
+  useEffect(() => {
+    if (!gnss.latest) return;
+    if (lastGnssTsRef.current !== null && gnss.latest.timestamp === lastGnssTsRef.current) return;
+    lastGnssTsRef.current = gnss.latest.timestamp;
+    gnssRef.current = pushCapped(gnssRef.current, gnss.latest, WINDOW_GNSS_CAP);
+  }, [gnss.latest]);
+
   // Drive evaluation once per fix (1 Hz). Buffer updates land in refs; only
   // verdict changes re-render the instrument.
   useEffect(() => {
     if (!location.fix) {
       return;
     }
+    if (lastFixTsRef.current !== null && location.fix.timestamp === lastFixTsRef.current) return;
+    lastFixTsRef.current = location.fix.timestamp;
     fixesRef.current = pushCapped(fixesRef.current, location.fix, WINDOW_FIX_CAP);
-    if (imu.sample) {
-      imuRef.current = pushCapped(imuRef.current, imu.sample, WINDOW_IMU_CAP);
-    }
-    if (baro.sample) {
-      baroRef.current = pushCapped(baroRef.current, baro.sample, WINDOW_BARO_CAP);
-    }
     if (spoofFixesRef.current.length > 0) {
       const [spoofFix, ...rest] = spoofFixesRef.current;
       spoofFixesRef.current = rest;
       fixesRef.current = pushCapped(fixesRef.current, spoofFix, WINDOW_FIX_CAP);
-    }
-    if (gnss.latest) {
-      gnssRef.current = pushCapped(gnssRef.current, gnss.latest, WINDOW_GNSS_CAP);
     }
     if (spoofGnssRef.current.length > 0) {
       const [spoofEpoch, ...rest] = spoofGnssRef.current;
@@ -218,27 +244,34 @@ export function useAnchorPipeline() {
       recordTransition(v);
       hapticForState(v.state);
     }
-  }, [location.fix, imu.sample, baro.sample, gnss.latest, sdk, recordTransition, hapticForState]);
+  }, [location.fix, sdk, recordTransition, hapticForState]);
 
   /** Labeled test-harness control: queue a jumped fix burst + degraded C/N0. */
   const injectSpoof = useCallback(() => {
     setSpoofing(true);
+    // Bound queue: replace pending spoof if already queued, don't accumulate unbounded.
     const base =
       fixesRef.current[fixesRef.current.length - 1] ??
       ({
-        latitude: 0,
-        longitude: 0,
-        altitude: 0,
-        accuracy: 10,
-        speed: 0,
-        bearing: 0,
+        latitude: 37.42,
+        longitude: -122.084,
+        altitude: 30,
+        accuracy: 5,
+        speed: 10,
+        bearing: 180,
         timestamp: Date.now(),
       } satisfies Fix);
-    spoofFixesRef.current = spoofFixesRef.current.concat(buildSpoofFixes(base, 5));
+    const fixes = buildSpoofFixes(base, 5);
     const now = Date.now();
-    spoofGnssRef.current = spoofGnssRef.current.concat(
-      [0, 1, 2, 3, 4].map((epochIdx) => buildSpoofGnssEpoch(now + epochIdx * 1000, epochIdx)),
-    );
+    const epochs = [0, 1, 2, 3, 4].map((epochIdx) => buildSpoofGnssEpoch(now + epochIdx * 1000, epochIdx));
+    // Cap concurrent spoof queue to one burst (5 fixes/epochs); drop previous if still pending.
+    if (spoofFixesRef.current.length > 0 || spoofGnssRef.current.length > 0) {
+      spoofFixesRef.current = fixes;
+      spoofGnssRef.current = epochs;
+    } else {
+      spoofFixesRef.current = spoofFixesRef.current.concat(fixes);
+      spoofGnssRef.current = spoofGnssRef.current.concat(epochs);
+    }
   }, []);
 
   /** Labeled test-harness control: clear all pipeline state; next evaluation starts fresh. */
@@ -251,7 +284,12 @@ export function useAnchorPipeline() {
     baroRef.current = [];
     gnssRef.current = [];
     lastStateRef.current = null;
+    lastFixTsRef.current = null;
+    lastImuTsRef.current = null;
+    lastBaroTsRef.current = null;
+    lastGnssTsRef.current = null;
     eventIdRef.current = 0;
+    generationRef.current += 1;
     setVerdict(null);
     setEvents([]);
     // Fresh instance resets the SDK-internal recovery-debounce machine.

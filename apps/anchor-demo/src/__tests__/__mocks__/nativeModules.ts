@@ -152,3 +152,13 @@ jest.mock('react-native-reanimated', () => {
   };
 });
 jest.mock('react-native-worklets/plugin', () => ({}), { virtual: true });
+
+jest.mock('react-native-safe-area-context', () => {
+  const ReactShim = require('react');
+  const MockView = (props: Record<string, unknown>) => ReactShim.createElement(require('react-native').View, props);
+  return {
+    SafeAreaProvider: ({ children }: { children?: unknown }) => children ?? null,
+    SafeAreaView: MockView,
+    useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  };
+});

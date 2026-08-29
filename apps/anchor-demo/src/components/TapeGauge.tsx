@@ -5,14 +5,12 @@
  * changes are eased with Reanimated.
  */
 import type { CheckId } from 'anchor-sdk';
-import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { colors, hairline, monoNumeric, monoNumericBold } from '@/theme';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
-  useDerivedValue,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
@@ -48,22 +46,22 @@ export interface TapeGaugeProps {
 }
 
 export function TapeGauge({ checkId, score, passed, stateColor }: TapeGaugeProps) {
-  const value = useSharedValue(0);
+  const safeScore = Number.isFinite(score) ? Math.max(0, Math.min(1, score)) : 0;
+  const displayScore = Math.round(safeScore * 100);
+  const value = useSharedValue(displayScore);
 
   useEffect(() => {
-    value.value = withTiming(Math.max(0, Math.min(100, score * 100)), {
+    value.value = withTiming(displayScore, {
       duration: 500,
       easing: Easing.out(Easing.cubic),
     });
-  }, [score, value]);
+  }, [displayScore, value]);
 
   const columnStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: VIEWPORT_H / 2 - (TOP_VALUE - value.value) * PX_PER_UNIT }],
   }));
 
-  const readout = useDerivedValue<ReactNode>(() =>
-    Math.round(value.value).toString().padStart(3, '0'),
-  );
+  const readout = displayScore.toString().padStart(3, '0');
 
   return (
     <View style={styles.cell}>
@@ -84,11 +82,9 @@ export function TapeGauge({ checkId, score, passed, stateColor }: TapeGaugeProps
         </Animated.View>
         {/* fixed center marker */}
         <View style={[styles.centerMarker, { backgroundColor: stateColor }]} />
-        {/* fixed readout */}
+        {/* fixed readout — static text, column is animated */}
         <View style={[styles.readout, { borderColor: stateColor }]}>
-          <Animated.Text style={[styles.readoutText, { color: stateColor }]}>
-            {readout}
-          </Animated.Text>
+          <Text style={[styles.readoutText, { color: stateColor }]}>{readout}</Text>
         </View>
       </View>
       <View style={[styles.flag, { borderColor: passed ? colors.chrome : colors.caution }]}>

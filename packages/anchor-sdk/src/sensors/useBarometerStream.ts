@@ -20,8 +20,7 @@ export interface BarometerStream {
 export function useBarometerStream(): BarometerStream {
   const [sample, setSample] = useState<BaroSample | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const subscribedRef = useRef(false);
-  let baroSubscription: { remove: () => void } | null = null;
+  const subscriptionRef = useRef<{ remove: () => void } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,10 +33,8 @@ export function useBarometerStream(): BarometerStream {
         return;
       }
       Barometer.setUpdateInterval(100);
-      subscribedRef.current = true;
-      // Keep the handle: per-subscription removal leaves other consumers of
-      // the shared sensor untouched.
-      baroSubscription = Barometer.addListener((measurement) => {
+      // Keep the handle in a ref so cleanup always sees the live subscription.
+      subscriptionRef.current = Barometer.addListener((measurement) => {
         if (cancelled) return;
         // Contract timestamps are epoch milliseconds; the sensor timestamp is
         // in seconds, so receipt time is used for the window ordering clock.
@@ -49,10 +46,8 @@ export function useBarometerStream(): BarometerStream {
 
     return () => {
       cancelled = true;
-      if (subscribedRef.current) {
-        subscribedRef.current = false;
-        baroSubscription?.remove();
-      }
+      subscriptionRef.current?.remove();
+      subscriptionRef.current = null;
     };
   }, []);
 

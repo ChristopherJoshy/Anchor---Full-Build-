@@ -32,31 +32,59 @@ export function headingCheck(window: SensorWindow): CheckResult {
     return { id: 'heading', passed: true, score: 1, detail: 'insufficient fixes for a track bearing' };
   }
 
+  // Non-finite speeds must not be treated as stationary.
+  const validSpeeds = recent.filter((f) => Number.isFinite(f.speed));
+  if (validSpeeds.length !== recent.length) {
+    // Corrupt speed data — fail closed rather than claim stationary.
+    return {
+      id: 'heading',
+      passed: false,
+      score: 0,
+      detail: `non-finite speed in track window`,
+    };
+  }
   const meanSpeed = recent.reduce((sum, fix) => sum + fix.speed, 0) / recent.length;
-  if (meanSpeed < MIN_MOVING_SPEED_MS) {
-    return { id: 'heading', passed: true, score: 1, detail: `stationary (mean speed ${meanSpeed.toFixed(1)} m/s)` };
+  if (!Number.isFinite(meanSpeed) || meanSpeed < MIN_MOVING_SPEED_MS) {
+    return { id: 'heading', passed: true, score: 1, detail: `stationary (mean speed ${Number.isFinite(meanSpeed) ? meanSpeed.toFixed(1) : String(meanSpeed)} m/s)` };
   }
 
   const first = recent[0];
   const last = recent[recent.length - 1];
+  if (
+    !Number.isFinite(first.latitude) ||
+    !Number.isFinite(first.longitude) ||
+    !Number.isFinite(last.latitude) ||
+    !Number.isFinite(last.longitude) ||
+    !Number.isFinite(last.timestamp)
+  ) {
+    return { id: 'heading', passed: false, score: 0, detail: `non-finite fix coordinates or timestamp` };
+  }
   const displacement = haversineMeters(first.latitude, first.longitude, last.latitude, last.longitude);
-  if (displacement < MIN_TRACK_DISPLACEMENT_M) {
-    return { id: 'heading', passed: true, score: 1, detail: `track displacement ${displacement.toFixed(0)} m too short for a bearing` };
+  if (!Number.isFinite(displacement) || displacement < MIN_TRACK_DISPLACEMENT_M) {
+    return { id: 'heading', passed: true, score: 1, detail: `track displacement ${Number.isFinite(displacement) ? displacement.toFixed(0) : String(displacement)} m too short for a bearing` };
   }
   const trackBearing = forwardBearingDeg(first.latitude, first.longitude, last.latitude, last.longitude);
+  if (!Number.isFinite(trackBearing)) {
+    return { id: 'heading', passed: false, score: 0, detail: `track bearing non-finite` };
+  }
 
   // Latest known magnetic heading from the fused IMU stream.
   let magHeading: number | null = null;
   for (let i = window.imu.length - 1; i >= 0; i -= 1) {
     const heading = window.imu[i].headingDeg;
-    if (heading !== null) {
+    if (heading !== null && Number.isFinite(heading)) {
       magHeading = heading;
       break;
     }
   }
 
-  const sun = solarCompassHeading(last.latitude, last.longitude, new Date(last.timestamp));
-  const solarHeading = sun.elevationDeg > MIN_SOLAR_ELEVATION_DEG ? sun.azimuthDeg : null;
+  let solarHeading: number | null = null;
+  if (Number.isFinite(last.latitude) && Number.isFinite(last.longitude) && Number.isFinite(last.timestamp)) {
+    const sun = solarCompassHeading(last.latitude, last.longitude, new Date(last.timestamp));
+    if (Number.isFinite(sun.azimuthDeg) && Number.isFinite(sun.elevationDeg) && sun.elevationDeg > MIN_SOLAR_ELEVATION_DEG) {
+      solarHeading = sun.azimuthDeg;
+    }
+  }
 
   const sources: Array<{ name: string; deg: number }> = [{ name: 'track', deg: trackBearing }];
   if (magHeading !== null) sources.push({ name: 'magnetic', deg: magHeading });
@@ -69,7 +97,11 @@ export function headingCheck(window: SensorWindow): CheckResult {
   let maxDiff = 0;
   for (let i = 0; i < sources.length; i += 1) {
     for (let j = i + 1; j < sources.length; j += 1) {
-      maxDiff = Math.max(maxDiff, circularDiffDeg(sources[i].deg, sources[j].deg));
+      const diff = circularDiffDeg(sources[i].deg, sources[j].deg);
+      if (!Number.isFinite(diff)) {
+        return { id: 'heading', passed: false, score: 0, detail: `non-finite heading source` };
+      }
+      maxDiff = Math.max(maxDiff, diff);
     }
   }
 

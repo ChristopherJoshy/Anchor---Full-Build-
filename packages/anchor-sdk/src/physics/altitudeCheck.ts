@@ -33,12 +33,22 @@ export function altitudeCheck(window: SensorWindow): CheckResult {
   if (window.baro.length < 2) {
     return { id: 'altitude', passed: true, score: 1, detail: 'no barometer' };
   }
+  const p0 = window.baro[0].pressureHpa;
+  const p1 = window.baro[window.baro.length - 1].pressureHpa;
+  const a0 = fixes[0].altitude;
+  const a1 = fixes[fixes.length - 1].altitude;
+  if (!Number.isFinite(p0) || !Number.isFinite(p1) || p0 <= 0 || p1 <= 0 || !Number.isFinite(a0) || !Number.isFinite(a1)) {
+    return { id: 'altitude', passed: false, score: 0, detail: `non-finite or non-positive pressure/altitude` };
+  }
 
-  const gpsDelta = fixes[fixes.length - 1].altitude - fixes[0].altitude;
-  const baroFirst = barometricAltitudeMeters(window.baro[0].pressureHpa);
-  const baroLast = barometricAltitudeMeters(window.baro[window.baro.length - 1].pressureHpa);
+  const gpsDelta = a1 - a0;
+  const baroFirst = barometricAltitudeMeters(p0);
+  const baroLast = barometricAltitudeMeters(p1);
   const baroDelta = baroLast - baroFirst;
   const divergence = Math.abs(gpsDelta - baroDelta);
+  if (!Number.isFinite(divergence)) {
+    return { id: 'altitude', passed: false, score: 0, detail: `non-finite altitude divergence` };
+  }
 
   // Score falls linearly from 1 at the limit to 0 at twice the limit.
   const score = clamp01(1 - (divergence - DIVERGENCE_LIMIT_M) / DIVERGENCE_LIMIT_M);

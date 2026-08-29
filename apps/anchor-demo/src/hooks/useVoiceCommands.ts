@@ -36,7 +36,7 @@ export function useVoiceCommands(sdk: AnchorSDK, onCommand: (command: VoiceComma
   const chunksRef = useRef<Float32Array[]>([]);
   const busyRef = useRef(false);
 
-  const { stream, isStreaming } = useAudioStream({
+  const { stream } = useAudioStream({
     sampleRate: 16000,
     channels: 1,
     encoding: 'float32',
@@ -46,7 +46,7 @@ export function useVoiceCommands(sdk: AnchorSDK, onCommand: (command: VoiceComma
   });
 
   const start = useCallback(async () => {
-    if (busyRef.current || isStreaming) {
+    if (busyRef.current || status !== 'idle') {
       return;
     }
     busyRef.current = true;
@@ -59,17 +59,25 @@ export function useVoiceCommands(sdk: AnchorSDK, onCommand: (command: VoiceComma
       setStatus('recording');
     } catch (err) {
       setLastError(err instanceof Error ? err.message : 'Failed to start microphone');
+      setStatus('idle');
+      try { await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: false }); } catch {}
     } finally {
       busyRef.current = false;
     }
-  }, [stream, isStreaming]);
+  }, [stream, status]);
 
   const stop = useCallback(async () => {
-    if (!isStreaming) {
+    if (status !== 'recording') {
       return;
     }
-    stream.stop();
+    try { stream.stop(); } catch {}
     setStatus('processing');
+    // Safety timeout: if transcription hangs (model load), recover to idle.
+    const timeout = setTimeout(() => {
+      setStatus('idle');
+      setLastError('Transcription timed out');
+      try { void setAudioModeAsync({ allowsRecording: false, playsInSilentMode: false }); } catch {}
+    }, 10000);
     try {
       const total = chunksRef.current.reduce((n, c) => n + c.length, 0);
       if (total < 1600) {
@@ -92,9 +100,11 @@ export function useVoiceCommands(sdk: AnchorSDK, onCommand: (command: VoiceComma
     } catch (err) {
       setLastError(err instanceof Error ? err.message : 'Transcription failed');
     } finally {
+      clearTimeout(timeout);
       setStatus('idle');
+      try { await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: false }); } catch {}
     }
-  }, [isStreaming, stream, sdk, onCommand]);
+  }, [status, stream, sdk, onCommand]);
 
   const toggle = useCallback(() => {
     if (status === 'recording') {

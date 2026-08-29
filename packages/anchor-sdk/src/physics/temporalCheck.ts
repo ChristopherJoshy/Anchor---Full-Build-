@@ -32,9 +32,17 @@ export function temporalCheck(window: SensorWindow): CheckResult {
   const healthyDeltas: number[] = [];
 
   for (let i = 1; i < fixes.length; i += 1) {
-    const dtSeconds = (fixes[i].timestamp - fixes[i - 1].timestamp) / 1000;
+    const aTs = fixes[i - 1].timestamp;
+    const bTs = fixes[i].timestamp;
+    if (!Number.isFinite(aTs) || !Number.isFinite(bTs)) {
+      intervals += 1;
+      violations += 1;
+      duplicates += 1;
+      continue;
+    }
+    const dtSeconds = (bTs - aTs) / 1000;
     intervals += 1;
-    if (dtSeconds === 0) {
+    if (!Number.isFinite(dtSeconds) || dtSeconds === 0) {
       duplicates += 1;
       violations += 1;
     } else if (dtSeconds < 0) {

@@ -7,7 +7,7 @@
  *   caution  — DEGRADED and RECOVERING states, and per-check failure flags
  *   denied   — ONLY for pipeline state DENIED
  */
-import type { TextStyle } from 'react-native';
+import { StyleSheet, type TextStyle } from 'react-native';
 import type { IntegrityState } from 'anchor-sdk';
 
 export const colors = {
@@ -50,7 +50,7 @@ export const spacing = {
   xl: 24,
 } as const;
 
-export const hairline = 1;
+export const hairline = StyleSheet.hairlineWidth;
 
 /** Numeric text must always pair mono with tabular figures. */
 export const monoNumeric: TextStyle = {

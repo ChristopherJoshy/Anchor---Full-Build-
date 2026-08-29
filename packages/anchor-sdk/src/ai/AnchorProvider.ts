@@ -26,10 +26,11 @@ export function AnchorProvider({
   llm = true,
   speechToText = true,
   textEmbeddings = true,
-}: AnchorProviderProps): null {
+  children,
+}: AnchorProviderProps): ReactNode {
   useEffect(() => {
     preloadModels({ llm, speechToText, textEmbeddings });
   }, [llm, speechToText, textEmbeddings]);
 
-  return null;
+  return children ?? null;
 }

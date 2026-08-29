@@ -34,9 +34,31 @@ export function kinematicCheck(window: SensorWindow): CheckResult {
   for (let i = 1; i < fixes.length; i += 1) {
     const a = fixes[i - 1];
     const b = fixes[i];
+    // Non-finite coordinates, speed, accuracy, or timestamp must fail closed.
+    if (
+      !Number.isFinite(a.latitude) ||
+      !Number.isFinite(a.longitude) ||
+      !Number.isFinite(b.latitude) ||
+      !Number.isFinite(b.longitude) ||
+      !Number.isFinite(a.accuracy) ||
+      !Number.isFinite(b.accuracy) ||
+      !Number.isFinite(a.timestamp) ||
+      !Number.isFinite(b.timestamp) ||
+      !Number.isFinite(b.speed)
+    ) {
+      pairs += 1;
+      violations += 1;
+      teleport = false;
+      continue;
+    }
     const dtSeconds = (b.timestamp - a.timestamp) / 1000;
-    if (dtSeconds <= 0) continue;
+    if (dtSeconds <= 0 || !Number.isFinite(dtSeconds)) continue;
     const implied = haversineMeters(a.latitude, a.longitude, b.latitude, b.longitude) / dtSeconds;
+    if (!Number.isFinite(implied)) {
+      pairs += 1;
+      violations += 1;
+      continue;
+    }
     maxImplied = Math.max(maxImplied, implied);
     pairs += 1;
     if (implied > TELEPORT_SPEED_MS) {
@@ -44,8 +66,13 @@ export function kinematicCheck(window: SensorWindow): CheckResult {
       violations += 1;
       continue;
     }
+    // Unknown accuracy (Infinity) must not give infinite tolerance — treat as violation.
+    if (!Number.isFinite(a.accuracy) || !Number.isFinite(b.accuracy)) {
+      violations += 1;
+      continue;
+    }
     const tolerance = (a.accuracy + b.accuracy) / dtSeconds + SPEED_NOISE_MARGIN_MS;
-    if (Math.abs(implied - b.speed) > tolerance) {
+    if (!Number.isFinite(tolerance) || Math.abs(implied - b.speed) > tolerance) {
       violations += 1;
     }
   }

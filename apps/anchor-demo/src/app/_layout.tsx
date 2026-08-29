@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from 'react';
 import { RootErrorBoundary } from '@/components/RootErrorBoundary';
 import { consoleLog, startupLog } from '@/lib/startupLog';
 import { colors } from '@/theme';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -95,22 +96,24 @@ export default function RootLayout() {
   }
 
   return (
-    <RootErrorBoundary>
-      <AnchorProvider>
-        <StartupLogEffect />
-        <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.panelBg },
-            animation: 'none',
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="dashboard" />
-        </Stack>
-      </AnchorProvider>
-    </RootErrorBoundary>
+    <SafeAreaProvider>
+      <RootErrorBoundary>
+        <AnchorProvider>
+          <StartupLogEffect />
+          <StatusBar style="light" />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.panelBg },
+              animation: 'none',
+            }}
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen name="dashboard" />
+          </Stack>
+        </AnchorProvider>
+      </RootErrorBoundary>
+    </SafeAreaProvider>
   );
 }
 

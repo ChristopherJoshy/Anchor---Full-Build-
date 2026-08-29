@@ -31,16 +31,21 @@ export function environmentalCheck(window: SensorWindow): CheckResult {
   for (let i = 0; i < fixes.length; i += 1) {
     const fix = fixes[i];
     const fixProblems: string[] = [];
-    if (fix.altitude < MIN_ALTITUDE_M || fix.altitude > MAX_ALTITUDE_M) {
-      fixProblems.push(`altitude ${fix.altitude.toFixed(0)} m outside [-450, 9000] m`);
+    if (!Number.isFinite(fix.altitude) || fix.altitude < MIN_ALTITUDE_M || fix.altitude > MAX_ALTITUDE_M) {
+      const altStr = Number.isFinite(fix.altitude) ? `${fix.altitude.toFixed(0)} m` : String(fix.altitude);
+      fixProblems.push(`altitude ${altStr} outside [-450, 9000] m`);
     }
-    if (fix.speed < MIN_SPEED_MS || fix.speed > MAX_SPEED_MS) {
-      fixProblems.push(`speed ${fix.speed.toFixed(1)} m/s outside [0, 320] m/s`);
+    if (!Number.isFinite(fix.speed) || fix.speed < MIN_SPEED_MS || fix.speed > MAX_SPEED_MS) {
+      const speedStr = Number.isFinite(fix.speed) ? `${fix.speed.toFixed(1)} m/s` : String(fix.speed);
+      fixProblems.push(`speed ${speedStr} outside [0, 320] m/s`);
     }
-    if (fix.accuracy > MAX_ACCURACY_M) {
-      fixProblems.push(`accuracy ${fix.accuracy.toFixed(0)} m worse than ${MAX_ACCURACY_M} m`);
+    if (!Number.isFinite(fix.accuracy) || fix.accuracy > MAX_ACCURACY_M || fix.accuracy < 0) {
+      const accStr = Number.isFinite(fix.accuracy) ? `${fix.accuracy.toFixed(0)} m` : String(fix.accuracy);
+      fixProblems.push(`accuracy ${accStr} worse than ${MAX_ACCURACY_M} m`);
     }
     if (
+      !Number.isFinite(fix.latitude) ||
+      !Number.isFinite(fix.longitude) ||
       Math.abs(fix.latitude) > 90 ||
       Math.abs(fix.longitude) > 180 ||
       (fix.latitude === 0 && fix.longitude === 0)

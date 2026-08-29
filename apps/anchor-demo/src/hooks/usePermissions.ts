@@ -47,10 +47,12 @@ export function usePermissions() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     AsyncStorage.getItem(STORAGE_KEY)
-      .then((raw) => setDecisions(normalize(raw)))
-      .catch(() => setDecisions(DEFAULTS))
-      .finally(() => setLoaded(true));
+      .then((raw) => { if (!cancelled) setDecisions(normalize(raw)); })
+      .catch(() => { if (!cancelled) setDecisions(DEFAULTS); })
+      .finally(() => { if (!cancelled) setLoaded(true); });
+    return () => { cancelled = true; };
   }, []);
 
   const persist = useCallback((next: PermissionDecisions) => {

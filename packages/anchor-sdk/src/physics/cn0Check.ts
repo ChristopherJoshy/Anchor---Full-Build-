@@ -93,21 +93,29 @@ export function cn0Check(window: SensorWindow): CheckResult {
   for (const run of runs) {
     if (run.length < MIN_EPOCHS) continue;
 
-    // Satellites present in every epoch of the run.
-    const common = run[0].satellites.map((sat) => sat.svid).filter((svid) =>
-      run.every((epoch) => epoch.satellites.some((sat) => sat.svid === svid)),
-    );
-    if (common.length < MIN_SATELLITES_PER_EPOCH) continue;
+    // Satellites present in every epoch — key by constellation+svid to avoid
+    // cross-constellation SVID collisions (GPS 5 ≠ GLONASS 5).
+    const keyOf = (svid: number, constellation: string) => `${constellation}:${svid}`;
+    const commonKeys = run[0].satellites
+      .map((sat) => keyOf(sat.svid, sat.constellation))
+      .filter((key) => run.every((epoch) => epoch.satellites.some((sat) => keyOf(sat.svid, sat.constellation) === key)));
+    if (commonKeys.length < MIN_SATELLITES_PER_EPOCH) continue;
 
-    const series = new Map<number, number[]>();
-    for (const svid of common) series.set(svid, []);
+    const series = new Map<string, number[]>();
+    for (const key of commonKeys) series.set(key, []);
     for (const epoch of run) {
-      for (const svid of common) {
-        const sat = epoch.satellites.find((candidate) => candidate.svid === svid);
-        series.get(svid)!.push(sat?.cn0DbHz ?? Number.NaN);
+      for (const key of commonKeys) {
+        const sat = epoch.satellites.find((candidate) => keyOf(candidate.svid, candidate.constellation) === key);
+        const cn0 = sat?.cn0DbHz;
+        // Reject non-finite or non-positive C/N0 (Infinity, NaN leak would corrupt variance).
+        if (typeof cn0 !== 'number' || !Number.isFinite(cn0) || cn0 <= 0) {
+          series.get(key)!.push(Number.NaN);
+        } else {
+          series.get(key)!.push(cn0);
+        }
       }
     }
-    if ([...series.values()].some((values) => values.some((value) => Number.isNaN(value)))) continue;
+    if ([...series.values()].some((values) => values.some((value) => !Number.isFinite(value)))) continue;
 
     const seriesList = [...series.values()];
     const meanVarianceTotal =

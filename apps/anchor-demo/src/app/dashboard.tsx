@@ -16,6 +16,7 @@ import type { AnchorSDK, CheckId, CheckResult } from 'anchor-sdk';
 import { Linking } from 'react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { cosineSimilarity } from '@/lib/search';
 import { startupLog } from '@/lib/startupLog';
 
@@ -45,7 +46,7 @@ function LocationDenied() {
 
 
 export default function DashboardScreen() {
-  const { decisions } = usePermissions();
+  const { decisions, loaded: permsLoaded } = usePermissions();
   const pipeline = useAnchorPipeline();
   const [searchOverlay, setSearchOverlay] = useState<SearchOverlayData | null>(null);
   const [reasonPanel, setReasonPanel] = useState(false);
@@ -54,23 +55,23 @@ export default function DashboardScreen() {
     startupLog(`dashboard mounted: location=${decisions.location} mic=${decisions.mic}`);
   }, [decisions.location, decisions.mic]);
 
-  const { sdk } = pipeline;
+  const { sdk, injectSpoof, reset } = pipeline;
 
   const onCommand = useCallback(
     (command: 'simulate spoof' | 'reset' | 'show reason') => {
       if (command === 'simulate spoof') {
-        pipeline.injectSpoof();
+        injectSpoof();
       } else if (command === 'reset') {
-        pipeline.reset();
+        reset();
       } else {
         setReasonPanel(true);
       }
     },
-    [pipeline],
+    [injectSpoof, reset],
   );
   const voice = useVoiceCommands(sdk as AnchorSDK, onCommand);
 
-  const locationDenied = decisions.location === 'denied' || pipeline.locationGranted === false;
+  const locationDenied = permsLoaded && (decisions.location === 'denied' || pipeline.locationGranted === false);
 
   const stateColor = pipeline.verdict ? colorForIntegrityState(pipeline.verdict.state) : colors.textMuted;
 
@@ -103,25 +104,26 @@ export default function DashboardScreen() {
 
   if (locationDenied) {
     return (
-      <View style={styles.screen}>
+      <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
         <LocationDenied />
         <BottomBar
           micDenied={decisions.mic === 'denied'}
           voiceStatus={voice.status}
           onToggleMic={voice.toggle}
           lastTranscript={voice.lastTranscript}
+          lastError={voice.lastError}
           onSearch={onSearch}
           spoofing={pipeline.spoofing}
-          onSpoof={pipeline.injectSpoof}
-          onReset={pipeline.reset}
+          onSpoof={injectSpoof}
+          onReset={reset}
           onShowReason={() => setReasonPanel(true)}
         />
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <StatusStrip verdict={pipeline.verdict} />
 
       {/* six PFD tape gauges */}
@@ -166,34 +168,37 @@ export default function DashboardScreen() {
         voiceStatus={voice.status}
         onToggleMic={voice.toggle}
         lastTranscript={voice.lastTranscript}
+        lastError={voice.lastError}
         onSearch={onSearch}
         spoofing={pipeline.spoofing}
-        onSpoof={pipeline.injectSpoof}
-        onReset={pipeline.reset}
+        onSpoof={injectSpoof}
+        onReset={reset}
         onShowReason={() => setReasonPanel(true)}
       />
 
       {/* SHOW REASON panel — last LLM explanation inline */}
       {reasonPanel ? (
         <Pressable style={styles.overlayScrim} onPress={() => setReasonPanel(false)}>
-          <View style={styles.overlayPanel}>
+          <Pressable style={styles.overlayPanel} onPress={() => {}}>
             <Text style={styles.overlayTitle}>LAST REASON — AI EXPLANATION</Text>
-            <ScrollView style={styles.overlayScroll}>
+            <ScrollView style={styles.overlayScroll} keyboardShouldPersistTaps="handled">
               <Text style={styles.overlayBody}>
                 {lastExplanation ?? '(waiting for on-device model — explanation appears after the next transition)'}
               </Text>
             </ScrollView>
-            <Text style={styles.overlayHint}>TAP ANYWHERE TO CLOSE</Text>
-          </View>
+            <Pressable onPress={() => setReasonPanel(false)}>
+              <Text style={styles.overlayHint}>TAP ANYWHERE TO CLOSE</Text>
+            </Pressable>
+          </Pressable>
         </Pressable>
       ) : null}
 
       {/* semantic search results overlay */}
       {searchOverlay ? (
         <Pressable style={styles.overlayScrim} onPress={() => setSearchOverlay(null)}>
-          <View style={styles.overlayPanel}>
+          <Pressable style={styles.overlayPanel} onPress={() => {}}>
             <Text style={styles.overlayTitle}>SEARCH — &quot;{searchOverlay.query}&quot;</Text>
-            <ScrollView style={styles.overlayScroll}>
+            <ScrollView style={styles.overlayScroll} keyboardShouldPersistTaps="handled">
               {searchOverlay.hits.length === 0 ? (
                 <Text style={styles.overlayBody}>
                   No embedded events yet (embeddings index after the first transition) or no
@@ -202,7 +207,7 @@ export default function DashboardScreen() {
               ) : (
                 searchOverlay.hits.map(({ entry, score }) => (
                   <View key={entry.id} style={styles.hitRow}>
-                    <Text style={styles.hitScore}>{Math.round(score * 100).toString().padStart(3, '0')}%</Text>
+                    <Text style={styles.hitScore}>{Number.isFinite(score) ? Math.round(score * 100).toString().padStart(3, '0') : '000'}%</Text>
                     <Text style={styles.hitReason} numberOfLines={2}>
                       {entry.reason}
                     </Text>
@@ -210,11 +215,13 @@ export default function DashboardScreen() {
                 ))
               )}
             </ScrollView>
-            <Text style={styles.overlayHint}>TAP ANYWHERE TO CLOSE</Text>
-          </View>
+            <Pressable onPress={() => setSearchOverlay(null)}>
+              <Text style={styles.overlayHint}>TAP ANYWHERE TO CLOSE</Text>
+            </Pressable>
+          </Pressable>
         </Pressable>
       ) : null}
-    </View>
+    </SafeAreaView>
   );
 }
 

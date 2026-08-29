@@ -91,19 +91,24 @@ function runChecks(window: SensorWindow): { results: CheckResult[]; failedChecks
   return { results, failedChecks };
 }
 
-function reasonFor(state: IntegrityState, failedChecks: CheckId[], machine: IntegrityMachine): string {
+function reasonFor(
+  state: IntegrityState,
+  failedChecks: CheckId[],
+  prev: IntegrityMachine,
+  next: IntegrityMachine,
+): string {
   if (failedChecks.length === 0) {
     if (state === 'DENIED') {
-      return `recovery debounce ${machine.cleanStreak}/${RECOVERY_DEBOUNCE} clean evaluations`;
+      return `recovery debounce ${next.cleanStreak}/${RECOVERY_DEBOUNCE} clean evaluations`;
     }
     if (state === 'RECOVERING') {
-      return `recovery debounce satisfied after ${machine.cleanStreak} clean evaluations`;
+      return `recovery debounce satisfied after ${next.cleanStreak} clean evaluations`;
     }
     return 'all checks passed';
   }
   const list = failedChecks.join(', ');
   if (state === 'DENIED') {
-    if (machine.state === 'RECOVERING') {
+    if (prev.state === 'RECOVERING') {
       return `regression during recovery: ${list} failed`;
     }
     return `denied: ${list} failed`;
@@ -153,7 +158,7 @@ export function stepIntegrity(
     state,
     failedChecks,
     results,
-    reason: reasonFor(state, failedChecks, prev),
+    reason: reasonFor(state, failedChecks, prev, next),
     confidence: confidenceOf(results),
     timestamp,
     cleanStreak,

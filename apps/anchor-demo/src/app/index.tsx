@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { usePermissions } from '@/hooks/usePermissions';
 import { startupLog } from '@/lib/startupLog';
 import { colors, fonts, hairline, monoNumericBold, spacing } from '@/theme';
@@ -46,8 +47,16 @@ export default function PrimerScreen() {
       return;
     }
     setRequesting(true);
-    await requestAll();
-    router.replace('/dashboard');
+    try {
+      await requestAll();
+      // Navigation is handled by the effect watching primerCompleted; no need to double-replace here.
+      // Fallback only if effect hasn't fired within a tick.
+      setTimeout(() => {
+        try { router.replace('/dashboard'); } catch {}
+      }, 200);
+    } catch {
+      setRequesting(false);
+    }
   };
 
   // While decisions load (or after completing, while the replace navigates),
@@ -55,18 +64,18 @@ export default function PrimerScreen() {
   // indistinguishable from a crash.
   if (!loaded || decisions.primerCompleted) {
     return (
-      <View style={styles.screen}>
+      <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
         <View style={styles.header}>
           <Image source={require('../../assets/images/splash-icon.png')} style={styles.glyph} />
           <Text style={styles.brand}>ANCHOR</Text>
           <Text style={styles.subline}>GNSS INTEGRITY MONITOR</Text>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <Image source={require('../../assets/images/splash-icon.png')} style={styles.glyph} />
         <Text style={styles.brand}>ANCHOR</Text>
@@ -96,11 +105,13 @@ export default function PrimerScreen() {
           style={({ pressed }) => [styles.continueBtn, pressed && styles.continueBtnPressed]}
           onPress={onContinue}
           disabled={requesting}
+          accessibilityRole="button"
+          accessibilityLabel="Continue to dashboard"
         >
           <Text style={styles.continueText}>{requesting ? 'WAITING…' : 'CONTINUE'}</Text>
         </Pressable>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
