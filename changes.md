@@ -98,3 +98,11 @@
 - rolling release `latest` deleted + recreated with the new APK (184,480,273 B): https://github.com/ChristopherJoshy/Anchor---Full-Build-/releases/tag/latest
 - LFS object replaced (f7abab8464 -> new pointer) — commit ea8b955
 - agents.md: full refresh per new standing directive — stack state, blank-launch hardening record, release pipeline reality, agents.md maintenance cadence rule
+
+## 2026-08-29 — test(anchor-demo): component render suite — primer, font-gate resilience, error boundary, dashboard with real physics
+- EAS Simulator unavailable (availability:false, waitlist) — no session started, nothing billed; fell back to a real component render suite in Node
+- devDeps: jest 29 + jest-expo ~57 + @react-native/jest-preset 0.86.3 (must match react-native 0.86) + @testing-library/react-native 13 (legacy-peer-deps: react-test-renderer peer)
+- jest.config.js (jest-expo preset, jsdom, transformIgnorePatterns for expo/reanimated/anchor-sdk), jest.setup.ts -> native-module boundary mocks (expo-location/expo-audio/expo-haptics/AsyncStorage/AnchorGnss native binding/reanimated-worklets passthrough); physics/checks/state machine always real
+- suites: primer (rows + Continue + request order), fontGate (font-failure + 10s-hang both render content — the blank-screen regression class), errorBoundary (INTEGRITY FAULT panel), dashboard with real physics (clean-drive -> TRUSTED + six gauge labels + EVENT LOG; spoofed-jump -> DENIED), pureLogic (13: command matching + cosine ranking)
+- REAL BUG FOUND AND FIXED: matchCommand returned the first command in LIST order, not the first appearing in the utterance ('reset then simulate spoof' matched 'simulate spoof'); now earliest occurrence wins — commit separate
+- app 21/21 + SDK 73/73 green; app + SDK tsc clean; tsconfig gains types:["jest"]
