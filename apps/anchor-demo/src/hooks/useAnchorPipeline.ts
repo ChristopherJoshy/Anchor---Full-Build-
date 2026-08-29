@@ -57,6 +57,16 @@ function pushCapped<T>(arr: T[], item: T, cap: number): T[] {
  * match the implied displacement. The SDK's checks do the judging; this only
  * fabricates the sensor frames the demo injects.
  */
+export type MockKind =
+  | 'vpn'
+  | 'teleport'
+  | 'cno'
+  | 'altitude'
+  | 'heading'
+  | 'temporal'
+  | 'environmental'
+  | 'compound';
+
 function buildSpoofFixes(base: Fix, count: number): Fix[] {
   const out: Fix[] = [];
   let lat = base.latitude;
@@ -75,6 +85,53 @@ function buildSpoofFixes(base: Fix, count: number): Fix[] {
     });
   }
   return out;
+}
+
+function buildAltitudeSpoofFixes(base: Fix, count: number): Fix[] {
+  // Keep position static, but spoof GPS altitude 120m above baro trend.
+  return Array.from({ length: count }, (_, i) => ({
+    latitude: base.latitude + (Math.random() - 0.5) * 0.00002,
+    longitude: base.longitude + (Math.random() - 0.5) * 0.00002,
+    altitude: base.altitude + 120 + i * 5, // baro stays ~0 delta, GPS jumps
+    accuracy: 4,
+    speed: base.speed,
+    bearing: base.bearing,
+    timestamp: base.timestamp + (i + 1) * 1000,
+  }));
+}
+
+function buildHeadingSpoofFixes(base: Fix, count: number): Fix[] {
+  // Move east (bearing 90) while IMU still reports south (180) → heading fail.
+  return Array.from({ length: count }, (_, i) => ({
+    latitude: base.latitude,
+    longitude: base.longitude + ((90 + i * 2) / (111_320 * Math.cos((base.latitude * Math.PI) / 180))),
+    altitude: base.altitude,
+    accuracy: 5,
+    speed: 12,
+    bearing: 90,
+    timestamp: base.timestamp + (i + 1) * 1000,
+  }));
+}
+
+function buildTemporalSpoofFixes(base: Fix, count: number): Fix[] {
+  // Duplicate timestamps → temporal fail (replay)
+  return Array.from({ length: count }, (_, i) => ({
+    latitude: base.latitude + i * 0.00001,
+    longitude: base.longitude,
+    altitude: base.altitude,
+    accuracy: 5,
+    speed: 10,
+    bearing: 180,
+    timestamp: base.timestamp + (i < 3 ? 0 : 1000), // first 3 share same ts
+  }));
+}
+
+function buildEnvironmentalFixes(base: Fix): Fix[] {
+  // Invalid altitude/speed/accuracy → environmental fail
+  return [
+    { ...base, altitude: 12000, accuracy: 500, timestamp: base.timestamp + 1000 },
+    { ...base, altitude: 9500, accuracy: 150, timestamp: base.timestamp + 2000 },
+  ];
 }
 
 /**
@@ -120,6 +177,8 @@ export function useAnchorPipeline() {
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [events, setEvents] = useState<EventLogEntry[]>([]);
   const [spoofing, setSpoofing] = useState(false);
+  const [vpnActive, setVpnActive] = useState(false);
+  const [lastMock, setLastMock] = useState<MockKind | null>(null);
 
   // Sensor window lives in refs: sensor ticks are far more frequent than
   // renders; only verdict changes re-render the instrument.
@@ -246,25 +305,7 @@ export function useAnchorPipeline() {
     }
   }, [location.fix, sdk, recordTransition, hapticForState]);
 
-  /** Labeled test-harness control: queue a jumped fix burst + degraded C/N0. */
-  const injectSpoof = useCallback(() => {
-    setSpoofing(true);
-    // Bound queue: replace pending spoof if already queued, don't accumulate unbounded.
-    const base =
-      fixesRef.current[fixesRef.current.length - 1] ??
-      ({
-        latitude: 37.42,
-        longitude: -122.084,
-        altitude: 30,
-        accuracy: 5,
-        speed: 10,
-        bearing: 180,
-        timestamp: Date.now(),
-      } satisfies Fix);
-    const fixes = buildSpoofFixes(base, 5);
-    const now = Date.now();
-    const epochs = [0, 1, 2, 3, 4].map((epochIdx) => buildSpoofGnssEpoch(now + epochIdx * 1000, epochIdx));
-    // Cap concurrent spoof queue to one burst (5 fixes/epochs); drop previous if still pending.
+  const queueSpoof = useCallback((fixes: Fix[], epochs: GnssMeasurementSample[]) => {
     if (spoofFixesRef.current.length > 0 || spoofGnssRef.current.length > 0) {
       spoofFixesRef.current = fixes;
       spoofGnssRef.current = epochs;
@@ -274,9 +315,65 @@ export function useAnchorPipeline() {
     }
   }, []);
 
+  /** Labeled test-harness control: queue a jumped fix burst + degraded C/N0. */
+  const injectSpoof = useCallback(() => {
+    setSpoofing(true);
+    setLastMock('compound');
+    setVpnActive(false);
+    const base =
+      fixesRef.current[fixesRef.current.length - 1] ??
+      ({ latitude: 37.42, longitude: -122.084, altitude: 30, accuracy: 5, speed: 10, bearing: 180, timestamp: Date.now() } satisfies Fix);
+    queueSpoof(buildSpoofFixes(base, 5), [0, 1, 2, 3, 4].map((i) => buildSpoofGnssEpoch(Date.now() + i * 1000, i)));
+  }, [queueSpoof]);
+
+  const mock = useCallback(
+    (kind: MockKind) => {
+      setLastMock(kind);
+      if (kind === 'vpn') {
+        // VPN: IP diverges, GPS stays clean — correctly NOT flagged as spoof.
+        // Demonstrates bureau.id guidance: GPS vs IP must be cross-checked, VPN alone ≠ spoof.
+        setVpnActive(true);
+        setSpoofing(false);
+        return;
+      }
+      setVpnActive(false);
+      setSpoofing(true);
+      const base =
+        fixesRef.current[fixesRef.current.length - 1] ??
+        ({ latitude: 37.42, longitude: -122.084, altitude: 30, accuracy: 5, speed: 10, bearing: 180, timestamp: Date.now() } satisfies Fix);
+      const now = Date.now();
+      switch (kind) {
+        case 'teleport':
+          queueSpoof(buildSpoofFixes(base, 5), []);
+          break;
+        case 'cno':
+          queueSpoof([], [0, 1, 2, 3, 4].map((i) => buildSpoofGnssEpoch(now + i * 1000, i)));
+          break;
+        case 'altitude':
+          queueSpoof(buildAltitudeSpoofFixes(base, 5), []);
+          break;
+        case 'heading':
+          queueSpoof(buildHeadingSpoofFixes(base, 5), []);
+          break;
+        case 'temporal':
+          queueSpoof(buildTemporalSpoofFixes(base, 5), []);
+          break;
+        case 'environmental':
+          queueSpoof(buildEnvironmentalFixes(base), []);
+          break;
+        case 'compound':
+          queueSpoof(buildSpoofFixes(base, 5), [0, 1, 2, 3, 4].map((i) => buildSpoofGnssEpoch(now + i * 1000, i)));
+          break;
+      }
+    },
+    [queueSpoof],
+  );
+
   /** Labeled test-harness control: clear all pipeline state; next evaluation starts fresh. */
   const reset = useCallback(() => {
     setSpoofing(false);
+    setVpnActive(false);
+    setLastMock(null);
     spoofFixesRef.current = [];
     spoofGnssRef.current = [];
     fixesRef.current = [];
@@ -309,7 +406,10 @@ export function useAnchorPipeline() {
     verdict,
     events,
     spoofing,
+    vpnActive,
+    lastMock,
     injectSpoof,
+    mock,
     reset,
     sdk,
   };

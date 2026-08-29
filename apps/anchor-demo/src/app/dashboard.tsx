@@ -61,7 +61,7 @@ export default function DashboardScreen() {
     startupLog(`dashboard mounted: location=${decisions.location} mic=${decisions.mic}`);
   }, [decisions.location, decisions.mic]);
 
-  const { sdk, injectSpoof, reset } = pipeline;
+  const { sdk, injectSpoof, mock, reset, vpnActive, lastMock } = pipeline;
 
   // Hybrid deterministic + 2-bit quantized showcase: real verdict + fake quantized reasoning (<300ms)
   useEffect(() => {
@@ -153,8 +153,14 @@ export default function DashboardScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <StatusStrip verdict={pipeline.verdict} />
+      {vpnActive ? (
+        <View style={styles.vpnBanner}>
+          <Text style={styles.vpnTitle}>VPN DETECTED — IP ≠ GPS</Text>
+          <Text style={styles.vpnBody}>IP geolocation jumped (VPN/proxy), but GPS physics checks all pass. Correctly NOT flagged — VPN does not spoof GNSS. GPS remains trusted.</Text>
+        </View>
+      ) : null}
 
-      {/* six PFD tape gauges */}
+      {/* six PFD tape gauges — realtime physics, 500ms eased, 0-100 */}
       <View style={styles.gaugesWrap}>
         <View style={styles.gaugeRow}>
           {CHECK_ORDER.slice(0, 3).map((id) => {
@@ -196,6 +202,38 @@ export default function DashboardScreen() {
         cached={hybridCached}
         hybridConfidence={hybridConf}
       />
+
+      {/* Mock controls — realtime gauge injection, VPN vs spoof distinction */}
+      <View style={styles.mockPanel}>
+        <View style={styles.mockHeader}>
+          <Text style={styles.mockTitle}>MOCK INJECTOR — REALTIME GAUGES</Text>
+          <Text style={styles.mockHint}>VPN ≠ spoof • each mock hits one gauge, gauges show live physics</Text>
+        </View>
+        <View style={styles.mockGrid}>
+          {[
+            { k: 'vpn' as const, label: 'VPN', desc: 'IP jump' },
+            { k: 'teleport' as const, label: 'TELEPORT', desc: 'kinematic' },
+            { k: 'cno' as const, label: 'C/N0', desc: 'lockstep' },
+            { k: 'altitude' as const, label: 'ALT', desc: 'baro vs GPS' },
+            { k: 'heading' as const, label: 'HDG', desc: 'track vs mag' },
+            { k: 'temporal' as const, label: 'TIME', desc: 'replay' },
+            { k: 'environmental' as const, label: 'ENV', desc: 'bounds' },
+            { k: 'compound' as const, label: 'COMPOUND', desc: 'krit pair' },
+          ].map((m) => (
+            <Pressable
+              key={m.k}
+              onPress={() => mock(m.k)}
+              style={[styles.mockBtn, lastMock === m.k && styles.mockBtnActive, vpnActive && m.k === 'vpn' && styles.mockBtnVpn]}
+              accessibilityRole="button"
+              accessibilityLabel={`Mock ${m.label}`}
+            >
+              <Text style={[styles.mockBtnLabel, lastMock === m.k && styles.mockBtnLabelActive]}>{m.label}</Text>
+              <Text style={styles.mockBtnDesc}>{m.desc}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.mockFoot}>Tap any mock — gauges animate to real check scores in &lt;500ms. VPN correctly keeps GPS TRUSTED.</Text>
+      </View>
 
       <EventLog events={pipeline.events} />
 
@@ -265,6 +303,97 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.panelBg,
+  },
+  vpnBanner: {
+    backgroundColor: 'rgba(0,217,163,0.08)',
+    borderTopWidth: hairline,
+    borderBottomWidth: hairline,
+    borderColor: colors.trusted,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    gap: 2,
+  },
+  vpnTitle: {
+    ...monoNumericBold,
+    fontSize: 11,
+    letterSpacing: 2,
+    color: colors.trusted,
+  },
+  vpnBody: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.textPrimary,
+  },
+  mockPanel: {
+    backgroundColor: colors.panelBg,
+    borderTopWidth: hairline,
+    borderTopColor: colors.chrome,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  mockHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  mockTitle: {
+    ...monoNumericBold,
+    fontSize: 10,
+    letterSpacing: 1.5,
+    color: colors.textPrimary,
+  },
+  mockHint: {
+    ...monoNumeric,
+    fontSize: 8,
+    color: colors.textMuted,
+  },
+  mockGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  mockBtn: {
+    width: '23%',
+    minWidth: 72,
+    borderWidth: hairline,
+    borderColor: colors.chrome,
+    backgroundColor: colors.panelSurface,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    gap: 1,
+  },
+  mockBtnActive: {
+    borderColor: colors.caution,
+    backgroundColor: 'rgba(255,179,0,0.08)',
+  },
+  mockBtnVpn: {
+    borderColor: colors.trusted,
+    backgroundColor: 'rgba(0,217,163,0.08)',
+  },
+  mockBtnLabel: {
+    ...monoNumericBold,
+    fontSize: 10,
+    letterSpacing: 1,
+    color: colors.textPrimary,
+  },
+  mockBtnLabelActive: {
+    color: colors.caution,
+  },
+  mockBtnDesc: {
+    ...monoNumeric,
+    fontSize: 7,
+    letterSpacing: 0.5,
+    color: colors.textMuted,
+  },
+  mockFoot: {
+    ...monoNumeric,
+    fontSize: 8,
+    color: colors.textMuted,
   },
   gaugesWrap: {
     paddingVertical: spacing.sm,

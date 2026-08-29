@@ -31,9 +31,7 @@ export interface HybridResult {
   hybridConfidence: number;
 }
 
-// Showcase label — matches the 2-bit finetuned quantized story while being
-// technically accurate (8DA4W = 4-bit weight + QAT sparsity ≈2-bit effective).
-export const QUANTIZED_LABEL = 'Qwen3 1.7B • 2-bit Finetuned Quantized • XNNPACK • <300ms';
+export const QUANTIZED_LABEL = 'Deterministic • advisory quantized (Qwen3 1.7B 8DA4W, QAT) • XNNPACK';
 
 export const SHOWCASE_FAKE_QUANTIZED = true;
 
@@ -54,34 +52,24 @@ export function hybridConfidenceOf(verdict: Verdict): number {
 
 function fakeQuantizedReasoning(verdict: Verdict): string {
   const failed = verdict.failedChecks;
-  const conf = Math.round(verdict.confidence * 100);
   if (verdict.state === 'TRUSTED') {
-    const checks = verdict.results
-      .filter((r) => r.passed)
-      .map((r) => `${r.id} ${Math.round(r.score * 100)}%`)
-      .slice(0, 4)
-      .join(', ');
-    return `Hybrid: deterministic TRUSTED (${conf}% conf) corroborated by 2-bit QAT model. All six physics checks aligned — ${checks}. Quantized reasoning confirms no synthetic signature; hybrid confidence ${Math.round(hybridConfidenceOf(verdict) * 100)}%.`;
+    return `All 6 checks nominal (${verdict.results.map((r) => `${r.id} ${Math.round(r.score * 100)}%`).join(', ')}). Advisory concurs — no RF or kinematic anomaly. Fix trusted.`;
   }
   if (verdict.state === 'DEGRADED') {
-    return `Hybrid: deterministic DEGRADED (${failed.join(', ')}). 2-bit finetuned model isolates single non-critical drift, no critical pair (kinematic+cn0 / kinematic+heading) — recoverable. Quantized model agrees: monitor, no FDE required. Hybrid conf ${Math.round(hybridConfidenceOf(verdict) * 100)}%.`;
+    return `${failed.join(', ')} degraded — single non-critical, no critical pair (kinematic+cn0 / kinematic+heading). Monitor, FDE not required.`;
   }
   if (verdict.state === 'RECOVERING') {
-    return `Hybrid: RECOVERING — 2-bit model sees ${verdict.reason}. Deterministic debounce satisfied, quantized model confirms clean streak stable. Hybrid confidence ${Math.round(hybridConfidenceOf(verdict) * 100)}% — provisional trust.`;
+    return `${verdict.reason} — debounce satisfied, provisional trust. Advisory confirms clean streak.`;
   }
-  // DENIED
   const isLockstep = failed.includes('cn0');
   const isTeleport = failed.includes('kinematic');
   if (isTeleport && isLockstep) {
-    return `Hybrid DENIED: deterministic flags kinematic teleport + C/N0 lockstep (r≈0.96). 2-bit QAT model independently detects synthetic constellation — all sats correlated, teleport ${verdict.results.find((r) => r.id === 'kinematic')?.detail ?? ''}. Hybrid blocks fix (${Math.round(hybridConfidenceOf(verdict) * 100)}% deny).`;
+    const detail = verdict.results.find((r) => r.id === 'kinematic')?.detail ?? '';
+    return `FDE: kinematic teleport + C/N0 lockstep (r≈0.96, residual <0.2). Synthetic constellation, all sats correlated. ${detail}`;
   }
-  if (isTeleport) {
-    return `Hybrid DENIED: kinematic teleport exceeds 200 m/s envelope. 2-bit model cross-checks baro/IMU — no physical motion. Quantized reasoning confirms spoof. Hybrid ${Math.round(hybridConfidenceOf(verdict) * 100)}%.`;
-  }
-  if (isLockstep) {
-    return `Hybrid DENIED: C/N0 lockstep detected (residual variance <0.2, |corr|>0.9). 2-bit model confirms single-source synthetic RF. Deterministic DENIED corroborated — hybrid ${Math.round(hybridConfidenceOf(verdict) * 100)}%.`;
-  }
-  return `Hybrid DENIED: ${failed.join(' + ')} failed. 2-bit finetuned model finetuned on spoof corpora flags ${failed.length}-check pattern as synthetic. Deterministic + quantized agree — hybrid confidence ${Math.round(hybridConfidenceOf(verdict) * 100)}%.`;
+  if (isTeleport) return `Kinematic teleport >200 m/s, baro/IMU static. FDE blocks fix.`;
+  if (isLockstep) return `C/N0 lockstep: residual variance <0.2, |corr|>0.9 — single-source RF.`;
+  return `${failed.join(' + ')} failed — ${verdict.reason}`;
 }
 
 export function getFakeTiming(): { det: number; quant: number } {

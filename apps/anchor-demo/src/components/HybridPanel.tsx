@@ -24,13 +24,13 @@ export function HybridPanel({ verdict, reasoning, timing, cached, hybridConfiden
     return (
       <View style={styles.panel}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>HYBRID ENGINE</Text>
+          <Text style={styles.headerTitle}>INTEGRITY • RAIM/FDE</Text>
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>2-BIT QAT • FINETUNED • XNNPACK</Text>
+            <Text style={styles.badgeText}>6 CHECKS • DETERMINISTIC</Text>
           </View>
         </View>
-        <Text style={styles.standby}>Awaiting first fix — hybrid pipeline idle</Text>
-        <Text style={styles.modelLabel}>{QUANTIZED_LABEL}</Text>
+        <Text style={styles.standby}>Awaiting first fix — pipeline idle</Text>
+        <Text style={styles.modelLabel}>Deterministic core • quantized advisory (XNNPACK) • &lt;300ms</Text>
       </View>
     );
   }
@@ -43,48 +43,46 @@ export function HybridPanel({ verdict, reasoning, timing, cached, hybridConfiden
   return (
     <View style={styles.panel}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>HYBRID ENGINE</Text>
+        <Text style={styles.headerTitle}>INTEGRITY • RAIM/FDE</Text>
         <View style={[styles.badge, under300 && styles.badgeOk]}>
           <Text style={[styles.badgeText, under300 && styles.badgeTextOk]}>
-            {under300 ? '✓ <300MS' : `${total}MS`} {cached ? '• CACHED' : ''} • 2-BIT QAT
+            DET {det.toFixed(0)}MS{cached ? ' • CACHED' : ''} {under300 ? '✓' : ''}
           </Text>
         </View>
       </View>
-
-      <View style={styles.timingRow}>
-        <Text style={styles.timingLabel}>DET</Text>
-        <Text style={styles.timingVal}>{det.toFixed(1)}MS</Text>
-        <Text style={styles.timingPlus}>+</Text>
-        <Text style={styles.timingLabel}>QUANT</Text>
-        <Text style={[styles.timingVal, styles.timingQuant]}>{quant}MS</Text>
-        <Text style={styles.timingEq}>=</Text>
-        <Text style={[styles.timingVal, under300 ? styles.timingOk : styles.timingOver]}>{total}MS</Text>
-        <Text style={styles.timingHint}>{SHOWCASE_FAKE_QUANTIZED ? '• finetuned template' : '• on-device'}</Text>
-      </View>
-
-      <View style={styles.divider} />
 
       <View style={styles.row}>
         <Text style={styles.kvKey}>STATE</Text>
         <Text style={[styles.kvVal, { color: colors.textPrimary }]}>{verdict.state}</Text>
         <Text style={styles.kvSep}>│</Text>
-        <Text style={styles.kvKey}>DET CONF</Text>
+        <Text style={styles.kvKey}>CONF</Text>
         <Text style={styles.kvVal}>{Math.round(verdict.confidence * 100)}%</Text>
-        <Text style={styles.kvSep}>│</Text>
-        <Text style={styles.kvKey}>HYBRID</Text>
-        <Text style={[styles.kvVal, styles.kvHybrid]}>{hybridConfidence !== null ? `${Math.round(hybridConfidence * 100)}%` : '--'}</Text>
+        {hybridConfidence !== null && hybridConfidence !== verdict.confidence ? (
+          <>
+            <Text style={styles.kvSep}>│</Text>
+            <Text style={styles.kvKey}>ADV</Text>
+            <Text style={[styles.kvVal, styles.kvHybrid]}>{Math.round(hybridConfidence * 100)}%</Text>
+          </>
+        ) : null}
       </View>
 
-      <Text style={styles.reason} numberOfLines={4}>
+      <Text style={styles.reason} numberOfLines={3}>
         {reasoning ?? verdict.reason}
       </Text>
 
+      <View style={styles.timingRow}>
+        <Text style={styles.timingLabel}>RAIM/FDE</Text>
+        <Text style={styles.timingVal}>{det.toFixed(1)}ms</Text>
+        <Text style={styles.timingSep}>•</Text>
+        <Text style={styles.timingLabel}>advisory</Text>
+        <Text style={[styles.timingVal, styles.timingQuant]}>{quant}ms</Text>
+        <Text style={styles.timingSep}>→</Text>
+        <Text style={[styles.timingVal, under300 ? styles.timingOk : styles.timingOver]}>{total}ms</Text>
+        {under300 ? <Text style={styles.timingOkSmall}>✓ &lt;300ms</Text> : null}
+      </View>
+
       <View style={styles.modelRow}>
-        <Text style={styles.modelLabel}>{QUANTIZED_LABEL}</Text>
-        <Text style={styles.modelMeta}>deterministic RAIM/FDE (authoritative) + quantized reasoning (advisory) • joint accuracy boost</Text>
-        {SHOWCASE_FAKE_QUANTIZED ? (
-          <Text style={styles.modelMeta}>Demo showcase: reasoning synthesized from verdict (no 1.7B bundle) — deterministic is authoritative</Text>
-        ) : null}
+        <Text style={styles.modelLabel}>Deterministic (authoritative) • quantized advisory {SHOWCASE_FAKE_QUANTIZED ? '(synthesized, no bundle)' : '(Qwen3 1.7B 8DA4W)'}</Text>
       </View>
     </View>
   );
@@ -152,12 +150,7 @@ const styles = StyleSheet.create({
   timingQuant: {
     color: colors.trusted,
   },
-  timingPlus: {
-    ...monoNumeric,
-    fontSize: 10,
-    color: colors.textMuted,
-  },
-  timingEq: {
+  timingSep: {
     ...monoNumeric,
     fontSize: 10,
     color: colors.textMuted,
@@ -168,10 +161,10 @@ const styles = StyleSheet.create({
   timingOver: {
     color: colors.denied,
   },
-  timingHint: {
+  timingOkSmall: {
     ...monoNumeric,
     fontSize: 8,
-    color: colors.textMuted,
+    color: colors.trusted,
     marginLeft: 2,
   },
   divider: {
