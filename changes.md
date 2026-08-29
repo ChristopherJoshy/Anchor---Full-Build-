@@ -90,3 +90,11 @@
 - Qwen3 thinking-mode normalization: stripThinking() removes <think> blocks (enable_thinking not exposed by generate()); system prompt tightened
 - Docs: package README model table + deviations; root README model-table lines only (4 lines: explain rows x2, embed rows x2 — embed was mislabeled multi-qa-mpnet-base-v2, actually all-mpnet-base-v2)
 - 73 jest tests green (3 new stripThinking cases), tsc clean
+
+## 2026-08-29 — ci: rebuilt production apk carrying hardening + Qwen3 explainer (EAS c6d4852a) shipped as latest
+- shipped 951c2cf8 predated the Qwen3 explainer swap (a79075e); rebuilt from synced HEAD be25cee so the next emulator window tests ONE apk with both
+- EAS production build c6d4852a-50da-422c-ae54-13239678b47c FINISHED: https://expo.dev/accounts/iamchris2005/projects/anchor/builds/c6d4852a-50da-422c-ae54-13239678b47c
+- verified in the shipped binary: assets/index.android.bundle embedded (4,103,332 B); extracted-bundle greps: 'anchor:startup' 1, 'qwen' 3 (Qwen3 accessor present), 'INTEGRITY FAULT' 1; 0 dev-launcher/expo-dev-client entries
+- rolling release `latest` deleted + recreated with the new APK (184,480,273 B): https://github.com/ChristopherJoshy/Anchor---Full-Build-/releases/tag/latest
+- LFS object replaced (f7abab8464 -> new pointer) — commit ea8b955
+- agents.md: full refresh per new standing directive — stack state, blank-launch hardening record, release pipeline reality, agents.md maintenance cadence rule
