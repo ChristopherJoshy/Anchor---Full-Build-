@@ -73,3 +73,16 @@ export interface Verdict {
   confidence: number;
   timestamp: number;
 }
+
+/**
+ * The public SDK surface. The AI methods can only read the verdict they are
+ * given — the type has no path back into the state machine, so explanations
+ * can never mutate integrity state.
+ */
+export interface AnchorSDK {
+  evaluate(window: SensorWindow, prevState?: IntegrityState): Verdict;
+  explain(verdict: Verdict): Promise<string>;
+  /** 16 kHz mono PCM waveform. */
+  transcribe(audio: Float32Array): Promise<string>;
+  embed(text: string): Promise<number[]>;
+}

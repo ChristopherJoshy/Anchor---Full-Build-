@@ -29,8 +29,12 @@
   "license": "MIT",
   "homepage": "https://github.com/ChristopherJoshy/Anchor---Full-Build-#readme",
   "dependencies": {
+    "expo-asset": "^57.0.15",
+    "expo-file-system": "^57.0.6",
     "expo-location": "^57.0.14",
-    "expo-sensors": "^57.0.2"
+    "expo-sensors": "^57.0.2",
+    "react-native-executorch": "^0.9.3",
+    "react-native-executorch-expo-resource-fetcher": "^0.9.1"
   },
   "devDependencies": {
     "@types/jest": "^29.5.14",
