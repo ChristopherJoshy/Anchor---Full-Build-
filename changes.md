@@ -52,3 +52,4 @@
   - app.json: removed SDK-57-removed android.edgeToEdgeEnabled/android.statusBar fields; async-storage pinned 2.2.0
   - local bundling proof: repaired npm-corrupted react-native-worklets (missing src/threads.ts), full 1892-module Metro graph + 5 MB Hermes bytecode via expo export (hermesc x86_64 binary shimmed through qemu-x86_64 on this arm64 box)
 - EAS development build 254e5629-9aa6-476f-ac31-b04c800e9de9 FINISHED (post anchor-sdk Kotlin constellation fix 5ba7532); APK downloaded to apps/anchor-demo/releases/anchor-dev.apk (gitignored: 258 MB exceeds GitHub 100 MB blob limit — artifact lives at https://expo.dev/accounts/iamchris2005/projects/anchor/builds/254e5629-9aa6-476f-ac31-b04c800e9de9)
+- APK artifact apps/anchor-demo/releases/anchor-dev.apk now stored in git via LFS (258 MB, exceeds plain-blob limit): https://expo.dev/accounts/iamchris2005/projects/anchor/builds/254e5629-9aa6-476f-ac31-b04c800e9de9
