@@ -1,0 +1,23 @@
+{
+  "fixes": [
+    { "latitude": 37.42, "longitude": -122.084, "altitude": 30.0, "accuracy": 5, "speed": 5, "bearing": 180, "timestamp": 1782072000000 },
+    { "latitude": 37.419955, "longitude": -122.084, "altitude": 41.1, "accuracy": 5, "speed": 5, "bearing": 180, "timestamp": 1782072001000 },
+    { "latitude": 37.41991, "longitude": -122.084, "altitude": 52.2, "accuracy": 5, "speed": 5, "bearing": 180, "timestamp": 1782072002000 },
+    { "latitude": 37.419865, "longitude": -122.084, "altitude": 63.3, "accuracy": 5, "speed": 5, "bearing": 180, "timestamp": 1782072003000 },
+    { "latitude": 37.41982, "longitude": -122.084, "altitude": 74.4, "accuracy": 5, "speed": 5, "bearing": 180, "timestamp": 1782072004000 },
+    { "latitude": 37.419775, "longitude": -122.084, "altitude": 85.5, "accuracy": 5, "speed": 5, "bearing": 180, "timestamp": 1782072005000 },
+    { "latitude": 37.41973, "longitude": -122.084, "altitude": 96.6, "accuracy": 5, "speed": 5, "bearing": 180, "timestamp": 1782072006000 },
+    { "latitude": 37.419685, "longitude": -122.084, "altitude": 107.8, "accuracy": 5, "speed": 5, "bearing": 180, "timestamp": 1782072007000 },
+    { "latitude": 37.41964, "longitude": -122.084, "altitude": 118.9, "accuracy": 5, "speed": 5, "bearing": 180, "timestamp": 1782072008000 },
+    { "latitude": 37.419595, "longitude": -122.084, "altitude": 130.0, "accuracy": 5, "speed": 5, "bearing": 180, "timestamp": 1782072009000 }
+  ],
+  "imu": [],
+  "baro": [
+    { "pressureHpa": 1009.5, "timestamp": 1782072000000 },
+    { "pressureHpa": 1009.5, "timestamp": 1782072002000 },
+    { "pressureHpa": 1009.5, "timestamp": 1782072004000 },
+    { "pressureHpa": 1009.5, "timestamp": 1782072006000 },
+    { "pressureHpa": 1009.5, "timestamp": 1782072008000 }
+  ],
+  "gnss": []
+}

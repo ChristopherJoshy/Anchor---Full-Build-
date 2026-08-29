@@ -1,0 +1,10 @@
+{
+  "fixes": [
+    { "latitude": 37.42, "longitude": -122.084, "altitude": 30, "accuracy": 5, "speed": 10, "bearing": 180, "timestamp": 1782072000000 },
+    { "latitude": 37.41991, "longitude": -122.084, "altitude": 30, "accuracy": 5, "speed": 10, "bearing": 180, "timestamp": 1782072001000 },
+    { "latitude": 37.415418, "longitude": -122.084, "altitude": 30, "accuracy": 5, "speed": 10, "bearing": 180, "timestamp": 1782072002000 }
+  ],
+  "imu": [],
+  "baro": [],
+  "gnss": []
+}

@@ -1,30 +1,9 @@
 import { useEffect, useState } from 'react';
 import * as Location from 'expo-location';
+import { locationToFix } from './fixMapping';
 import type { Fix } from '../types';
 
-/**
- * Maps an expo-location fix onto the SDK `Fix` contract.
- *
- * Nullability policy (native location fields can be null):
- *  - altitude null   -> 0 (absence treated as "no altitude information";
- *    altitudeCheck then sees a flat GPS altitude and defers to barometer)
- *  - accuracy null   -> +Infinity (unknown accuracy must not artificially pass
- *    the kinematic envelope; the environmental accuracy gate will fail it)
- *  - speed null      -> 0 (stationary unless proven otherwise)
- *  - heading null    -> 0 (bearing unknown; heading check only judges while moving)
- */
-export function locationToFix(location: Location.LocationObject): Fix {
-  const { coords, timestamp } = location;
-  return {
-    latitude: coords.latitude,
-    longitude: coords.longitude,
-    altitude: coords.altitude ?? 0,
-    accuracy: coords.accuracy ?? Number.POSITIVE_INFINITY,
-    speed: coords.speed ?? 0,
-    bearing: coords.heading ?? 0,
-    timestamp,
-  };
-}
+export { locationToFix };
 
 export interface LocationStream {
   fix: Fix | null;

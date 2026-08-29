@@ -1,0 +1,143 @@
+{
+  "fixes": [
+    {
+      "latitude": 37.42,
+      "longitude": -122.084,
+      "altitude": 30,
+      "accuracy": 5,
+      "speed": 6,
+      "bearing": 90,
+      "timestamp": 1782072000000
+    },
+    {
+      "latitude": 37.42,
+      "longitude": -122.083932,
+      "altitude": 30,
+      "accuracy": 5,
+      "speed": 6,
+      "bearing": 90,
+      "timestamp": 1782072001005
+    },
+    {
+      "latitude": 37.42,
+      "longitude": -122.083864,
+      "altitude": 30,
+      "accuracy": 5,
+      "speed": 6,
+      "bearing": 90,
+      "timestamp": 1782072001995
+    },
+    {
+      "latitude": 37.42,
+      "longitude": -122.083796,
+      "altitude": 30,
+      "accuracy": 5,
+      "speed": 6,
+      "bearing": 90,
+      "timestamp": 1782072003010
+    },
+    {
+      "latitude": 37.42,
+      "longitude": -122.083728,
+      "altitude": 30,
+      "accuracy": 5,
+      "speed": 6,
+      "bearing": 90,
+      "timestamp": 1782072003995
+    },
+    {
+      "latitude": 37.42,
+      "longitude": -122.08366,
+      "altitude": 30,
+      "accuracy": 5,
+      "speed": 6,
+      "bearing": 90,
+      "timestamp": 1782072005005
+    },
+    {
+      "latitude": 37.42,
+      "longitude": -122.083592,
+      "altitude": 30,
+      "accuracy": 5,
+      "speed": 6,
+      "bearing": 90,
+      "timestamp": 1782072006000
+    },
+    {
+      "latitude": 37.42,
+      "longitude": -122.083524,
+      "altitude": 30,
+      "accuracy": 5,
+      "speed": 6,
+      "bearing": 90,
+      "timestamp": 1782072007020
+    },
+    {
+      "latitude": 37.42,
+      "longitude": -122.083456,
+      "altitude": 30,
+      "accuracy": 5,
+      "speed": 6,
+      "bearing": 90,
+      "timestamp": 1782072008000
+    },
+    {
+      "latitude": 37.42,
+      "longitude": -122.083388,
+      "altitude": 30,
+      "accuracy": 5,
+      "speed": 6,
+      "bearing": 90,
+      "timestamp": 1782072009008
+    },
+    {
+      "latitude": 37.42,
+      "longitude": -122.08332,
+      "altitude": 30,
+      "accuracy": 5,
+      "speed": 6,
+      "bearing": 90,
+      "timestamp": 1782072010000
+    },
+    {
+      "latitude": 37.42,
+      "longitude": -122.083252,
+      "altitude": 30,
+      "accuracy": 5,
+      "speed": 6,
+      "bearing": 90,
+      "timestamp": 1782072011002
+    }
+  ],
+  "imu": [
+    {
+      "headingDeg": 265,
+      "gyroRadSec": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "timestamp": 1782072000000
+    },
+    {
+      "headingDeg": 265,
+      "gyroRadSec": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "timestamp": 1782072003010
+    },
+    {
+      "headingDeg": 265,
+      "gyroRadSec": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "timestamp": 1782072009008
+    }
+  ],
+  "baro": [],
+  "gnss": []
+}

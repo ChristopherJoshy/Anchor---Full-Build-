@@ -1,0 +1,15 @@
+{
+  "fixes": [],
+  "imu": [],
+  "baro": [],
+  "gnss": [
+    { "satellites": [ { "svid": 5, "constellation": "gps", "cn0DbHz": 40.0 }, { "svid": 12, "constellation": "gps", "cn0DbHz": 40.0 }, { "svid": 17, "constellation": "gps", "cn0DbHz": 40.0 }, { "svid": 3, "constellation": "galileo", "cn0DbHz": 40.0 }, { "svid": 21, "constellation": "beidou", "cn0DbHz": 40.0 } ], "timestamp": 1782072000000 },
+    { "satellites": [ { "svid": 5, "constellation": "gps", "cn0DbHz": 41.64 }, { "svid": 12, "constellation": "gps", "cn0DbHz": 41.64 }, { "svid": 17, "constellation": "gps", "cn0DbHz": 41.64 }, { "svid": 3, "constellation": "galileo", "cn0DbHz": 41.64 }, { "svid": 21, "constellation": "beidou", "cn0DbHz": 41.64 } ], "timestamp": 1782072001000 },
+    { "satellites": [ { "svid": 5, "constellation": "gps", "cn0DbHz": 43.09 }, { "svid": 12, "constellation": "gps", "cn0DbHz": 43.09 }, { "svid": 17, "constellation": "gps", "cn0DbHz": 43.09 }, { "svid": 3, "constellation": "galileo", "cn0DbHz": 43.09 }, { "svid": 21, "constellation": "beidou", "cn0DbHz": 43.09 } ], "timestamp": 1782072002000 },
+    { "satellites": [ { "svid": 5, "constellation": "gps", "cn0DbHz": 44.21 }, { "svid": 12, "constellation": "gps", "cn0DbHz": 44.21 }, { "svid": 17, "constellation": "gps", "cn0DbHz": 44.21 }, { "svid": 3, "constellation": "galileo", "cn0DbHz": 44.21 }, { "svid": 21, "constellation": "beidou", "cn0DbHz": 44.21 } ], "timestamp": 1782072003000 },
+    { "satellites": [ { "svid": 5, "constellation": "gps", "cn0DbHz": 44.86 }, { "svid": 12, "constellation": "gps", "cn0DbHz": 44.86 }, { "svid": 17, "constellation": "gps", "cn0DbHz": 44.86 }, { "svid": 3, "constellation": "galileo", "cn0DbHz": 44.86 }, { "svid": 21, "constellation": "beidou", "cn0DbHz": 44.86 } ], "timestamp": 1782072004000 },
+    { "satellites": [ { "svid": 5, "constellation": "gps", "cn0DbHz": 44.98 }, { "svid": 12, "constellation": "gps", "cn0DbHz": 44.98 }, { "svid": 17, "constellation": "gps", "cn0DbHz": 44.98 }, { "svid": 3, "constellation": "galileo", "cn0DbHz": 44.98 }, { "svid": 21, "constellation": "beidou", "cn0DbHz": 44.98 } ], "timestamp": 1782072005000 },
+    { "satellites": [ { "svid": 5, "constellation": "gps", "cn0DbHz": 44.55 }, { "svid": 12, "constellation": "gps", "cn0DbHz": 44.55 }, { "svid": 17, "constellation": "gps", "cn0DbHz": 44.55 }, { "svid": 3, "constellation": "galileo", "cn0DbHz": 44.55 }, { "svid": 21, "constellation": "beidou", "cn0DbHz": 44.55 } ], "timestamp": 1782072006000 },
+    { "satellites": [ { "svid": 5, "constellation": "gps", "cn0DbHz": 43.62 }, { "svid": 12, "constellation": "gps", "cn0DbHz": 43.62 }, { "svid": 17, "constellation": "gps", "cn0DbHz": 43.62 }, { "svid": 3, "constellation": "galileo", "cn0DbHz": 43.62 }, { "svid": 21, "constellation": "beidou", "cn0DbHz": 43.62 } ], "timestamp": 1782072007000 }
+  ]
+}

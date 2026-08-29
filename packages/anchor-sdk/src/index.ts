@@ -17,9 +17,11 @@ export {
   type AnchorGnssStatusEvent,
 } from './gnss/AnchorGnssModule';
 
-// Sensor hooks.
-export { useLocationStream, locationToFix } from './sensors/useLocationStream';
-export { useImuStream, magnetometerHeadingDeg } from './sensors/useImuStream';
+// Sensor hooks and their pure helpers.
+export { useLocationStream } from './sensors/useLocationStream';
+export { locationToFix } from './sensors/fixMapping';
+export { useImuStream } from './sensors/useImuStream';
+export { magnetometerHeadingDeg, wrapAngleDelta } from './sensors/headingMath';
 export { useBarometerStream } from './sensors/useBarometerStream';
 export { useGnssMeasurements } from './sensors/useGnssMeasurements';
 

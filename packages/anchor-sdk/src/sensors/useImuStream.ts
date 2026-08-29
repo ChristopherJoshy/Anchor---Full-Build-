@@ -1,31 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Gyroscope, Magnetometer } from 'expo-sensors';
+import { magnetometerHeadingDeg, wrapAngleDelta } from './headingMath';
 import type { ImuSample } from '../types';
+
+export { magnetometerHeadingDeg };
 
 /** Complementary-filter gain: weight of the magnetometer correction per mag sample. */
 const MAG_GAIN = 0.1;
 /** Update interval for both sensors, ms (~10 Hz each). */
 const UPDATE_INTERVAL_MS = 100;
-
-/**
- * Magnetic heading from the magnetometer, portrait axis conventions:
- * the device is assumed near-flat and screen-up, so the heading of the top
- * edge (the "forward" direction) is atan2(-mx, my) clockwise from magnetic
- * north. NOT tilt-compensated (that needs the accelerometer); the heading
- * check consumes it only as a direction-consistency signal.
- */
-export function magnetometerHeadingDeg(x: number, y: number): number {
-  const heading = (Math.atan2(-x, y) * 180) / Math.PI;
-  return heading < 0 ? heading + 360 : heading;
-}
-
-/** Shortest signed difference between two headings in degrees (-180..180). */
-function wrapAngleDelta(deg: number): number {
-  let delta = deg % 360;
-  if (delta > 180) delta -= 360;
-  if (delta < -180) delta += 360;
-  return delta;
-}
 
 export interface ImuStream {
   sample: ImuSample | null;
@@ -98,7 +81,7 @@ export function useImuStream(): ImuStream {
             // Positive gz rotates counterclockwise; compass heading is
             // clockwise-positive, so the integrated rate is negated.
             headingRef.current -= (z * dtSeconds * 180) / Math.PI;
-            headingRef.current = (headingRef.current % 360 + 360) % 360;
+            headingRef.current = ((headingRef.current % 360) + 360) % 360;
           }
           lastGyroTimeRef.current = now;
           latestGyroRef.current = { x, y, z };
