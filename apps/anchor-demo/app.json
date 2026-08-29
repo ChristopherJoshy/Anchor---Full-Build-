@@ -1,23 +1,40 @@
 {
   "expo": {
-    "name": "anchor-demo",
-    "slug": "anchor-demo",
+    "name": "Anchor",
+    "slug": "anchor",
     "version": "1.0.0",
+    "scheme": "anchor",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "anchordemo",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0C1116",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/images/icon.png",
+      "supportsTablet": false
     },
     "android": {
+      "package": "com.christopherjoshy.anchor",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0C1116",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ],
+      "statusBar": {
+        "backgroundColor": "#0C1116",
+        "barStyle": "light-content"
+      }
     },
     "web": {
       "output": "static",
@@ -28,15 +45,29 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#0C1116",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 192
         }
-      ]
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Hears voice commands like 'simulate spoof'"
+        }
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "98219ae4-65d4-41dc-a22d-03bee5050a3f"
+      }
+    },
+    "owner": "iamchris2005"
   }
 }
