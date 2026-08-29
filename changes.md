@@ -33,3 +33,14 @@
 - stepIntegrity(window, machine): pure RAIM/FDE transition; RECOVERY_DEBOUNCE=5 clean evals DENIED->RECOVERING->TRUSTED; glitch during recovery -> DENIED with debounce reset; critical pairs kinematic+cn0 / kinematic+heading -> DENIED
 - evaluateIntegrity(window, prevState): stateless contract view; confidence = weighted check scores (kinematic/cn0 0.25, heading/env 0.15, temporal/altitude 0.1)
 - 67 jest tests green; EAS Kotlin fix: constellation codes as documented literals (compileSdk 36 jar lacks GnssMeasurement.CONSTELLATION_* symbols)
+
+## 2026-08-29 — feat: ExecuTorch AI wrappers (explain/transcribe/embed), AnchorProvider, createAnchorSDK
+- react-native-executorch 0.9.3 functional API (LLMModule/SpeechToTextModule/TextEmbeddingsModule fromModelName), lazy module-level promise caches, dynamic import to keep non-device environments clean
+- models: llama3_2_1b (quantized), whisper_base_en, all_mpnet_base_v2 (multi-qa-mpnet-base-v2 not shipped; documented deviation)
+- explainVerdict: strict (Verdict) -> Promise<string], deterministic prompt template, stateless generate(); transcribeCommand: 16kHz mono Float32Array -> text; embedText: string -> number[]
+- AnchorProvider: headless preloader sharing the SDK's model caches; createAnchorSDK: owns the IntegrityMachine for debounced recovery
+
+## 2026-08-29 — feat: full SDK wiring + package README
+- src/index.ts exports the complete surface: native binding, sensor hooks, six checks, solarCompassHeading, evaluateIntegrity/stepIntegrity, createAnchorSDK/AnchorProvider, AI wrappers, contract types
+- README: quick start, state machine table, thresholds table, native module events/status docs, AI guarantees, autolinking notes
+- 70 jest tests green, tsc --noEmit clean
