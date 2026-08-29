@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["dom", "DOM.Iterable", "esnext"],
+    "typeRoots": ["./ts-declarations", "./node_modules/@types", "../../node_modules/@types"],
+    "types": ["jest"],
+    "jsx": "react-native",
+    "target": "esnext",
+    "moduleResolution": "bundler",
+    "module": "esnext",
+    "moduleDetection": "force",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": false,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": false
+  },
+  "include": ["src"]
+}
