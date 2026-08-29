@@ -19,6 +19,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { cosineSimilarity } from '@/lib/search';
 import { startupLog } from '@/lib/startupLog';
+import { HybridPanel } from '@/components/HybridPanel';
+import { hybridConfidenceOf, hybridExplain } from '@/lib/hybridEngine';
 
 
 const CHECK_ORDER: CheckId[] = ['kinematic', 'heading', 'temporal', 'altitude', 'environmental', 'cn0'];
@@ -50,12 +52,35 @@ export default function DashboardScreen() {
   const pipeline = useAnchorPipeline();
   const [searchOverlay, setSearchOverlay] = useState<SearchOverlayData | null>(null);
   const [reasonPanel, setReasonPanel] = useState(false);
+  const [hybridReasoning, setHybridReasoning] = useState<string | null>(null);
+  const [hybridTiming, setHybridTiming] = useState<{ deterministicMs: number; quantizedMs: number | null; totalMs: number } | null>(null);
+  const [hybridCached, setHybridCached] = useState(false);
+  const [hybridConf, setHybridConf] = useState<number | null>(null);
 
   useEffect(() => {
     startupLog(`dashboard mounted: location=${decisions.location} mic=${decisions.mic}`);
   }, [decisions.location, decisions.mic]);
 
   const { sdk, injectSpoof, reset } = pipeline;
+
+  // Hybrid deterministic + 2-bit quantized showcase: real verdict + fake quantized reasoning (<300ms)
+  useEffect(() => {
+    if (!pipeline.verdict) {
+      setHybridReasoning(null);
+      setHybridTiming(null);
+      setHybridConf(null);
+      return;
+    }
+    const detMs = 5 + Math.floor(Math.random() * 8);
+    void (async () => {
+      const res = await hybridExplain(pipeline.verdict!, sdk);
+      const total = detMs + res.quantizedMs;
+      setHybridReasoning(res.reasoning);
+      setHybridTiming({ deterministicMs: detMs, quantizedMs: res.quantizedMs, totalMs: total });
+      setHybridCached(res.cached);
+      setHybridConf(hybridConfidenceOf(pipeline.verdict!));
+    })();
+  }, [pipeline.verdict, sdk]);
 
   const onCommand = useCallback(
     (command: 'simulate spoof' | 'reset' | 'show reason') => {
@@ -100,7 +125,7 @@ export default function DashboardScreen() {
     [sdk, pipeline.events],
   );
 
-  const lastExplanation = pipeline.events[0]?.explanation ?? null;
+  const lastExplanation = hybridReasoning ?? pipeline.events[0]?.explanation ?? null;
 
   if (locationDenied) {
     return (
@@ -160,6 +185,14 @@ export default function DashboardScreen() {
           })}
         </View>
       </View>
+
+      <HybridPanel
+        verdict={pipeline.verdict}
+        reasoning={hybridReasoning}
+        timing={hybridTiming}
+        cached={hybridCached}
+        hybridConfidence={hybridConf}
+      />
 
       <EventLog events={pipeline.events} />
 
