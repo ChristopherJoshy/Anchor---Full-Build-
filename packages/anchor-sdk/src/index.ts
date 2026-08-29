@@ -16,3 +16,23 @@ export {
   type AnchorGnssStatus,
   type AnchorGnssStatusEvent,
 } from './gnss/AnchorGnssModule';
+
+// Sensor hooks.
+export { useLocationStream, locationToFix } from './sensors/useLocationStream';
+export { useImuStream, magnetometerHeadingDeg } from './sensors/useImuStream';
+export { useBarometerStream } from './sensors/useBarometerStream';
+export { useGnssMeasurements } from './sensors/useGnssMeasurements';
+
+// Shared contract types.
+export type {
+  IntegrityState,
+  CheckId,
+  CheckResult,
+  Fix,
+  ImuSample,
+  BaroSample,
+  SatelliteMeasurement,
+  GnssMeasurementSample,
+  SensorWindow,
+  Verdict,
+} from './types';

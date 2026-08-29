@@ -8,3 +8,8 @@
 
 ## 2026-08-29 — docs: comprehensive root readme
 - full rewrite: pitch, TOC, background (RAIM/FDE heritage, on-device AI rationale), 7-stage ASCII pipeline, features (six checks w/ spoofer rationale, solar compass, state machine table, AI stack, voice, semantic search, demo UI, permissions), design tokens, getting started, project tree, AnchorSDK reference, roadmap, license
+
+## 2026-08-29 — feat: sensor hooks + shared contract types
+- src/types.ts: exact AnchorSDK contract types (IntegrityState, CheckId, CheckResult, Fix, ImuSample, BaroSample, SatelliteMeasurement, GnssMeasurementSample, SensorWindow, Verdict)
+- useLocationStream (1 Hz Balanced, no auto permission request), useImuStream (mag+gyro ~10 Hz, atan2 portrait heading + complementary filter), useBarometerStream (~10 Hz), useGnssMeasurements (AnchorGnss native stream, ring-buffered history)
+- src/utils/ringBuffer.ts shared FIFO util
