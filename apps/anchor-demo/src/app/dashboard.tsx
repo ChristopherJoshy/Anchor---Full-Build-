@@ -14,9 +14,11 @@ import { useVoiceCommands } from '@/hooks/useVoiceCommands';
 import { colors, colorForIntegrityState, fonts, hairline, monoNumeric, monoNumericBold, spacing } from '@/theme';
 import type { AnchorSDK, CheckId, CheckResult } from 'anchor-sdk';
 import { Linking } from 'react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { cosineSimilarity } from '@/lib/search';
+import { startupLog } from '@/lib/startupLog';
+
 
 const CHECK_ORDER: CheckId[] = ['kinematic', 'heading', 'temporal', 'altitude', 'environmental', 'cn0'];
 
@@ -47,6 +49,10 @@ export default function DashboardScreen() {
   const pipeline = useAnchorPipeline();
   const [searchOverlay, setSearchOverlay] = useState<SearchOverlayData | null>(null);
   const [reasonPanel, setReasonPanel] = useState(false);
+
+  useEffect(() => {
+    startupLog(`dashboard mounted: location=${decisions.location} mic=${decisions.mic}`);
+  }, [decisions.location, decisions.mic]);
 
   const { sdk } = pipeline;
 

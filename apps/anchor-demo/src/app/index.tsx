@@ -1,13 +1,10 @@
-/**
- * First-launch permissions primer. Plain-language rows, one Continue, native
- * dialogs in sequence (location first, then mic). Decisions persist so this
- * screen never re-prompts.
- */
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePermissions } from '@/hooks/usePermissions';
+import { startupLog } from '@/lib/startupLog';
 import { colors, fonts, hairline, monoNumericBold, spacing } from '@/theme';
+
 
 function PermissionRow({ plate, line }: { plate: string; line: string }) {
   return (
@@ -26,7 +23,20 @@ export default function PrimerScreen() {
   const [requesting, setRequesting] = useState(false);
 
   useEffect(() => {
+    startupLog('primer screen mounted');
+  }, []);
+
+  useEffect(() => {
+    if (loaded) {
+      startupLog(
+        `primer decisions loaded: location=${decisions.location} mic=${decisions.mic} completed=${decisions.primerCompleted}`,
+      );
+    }
+  }, [loaded, decisions]);
+
+  useEffect(() => {
     if (loaded && decisions.primerCompleted) {
+      startupLog('primer complete — routing to dashboard');
       router.replace('/dashboard');
     }
   }, [loaded, decisions.primerCompleted, router]);
@@ -40,8 +50,19 @@ export default function PrimerScreen() {
     router.replace('/dashboard');
   };
 
+  // While decisions load (or after completing, while the replace navigates),
+  // render the shell instead of null — a production blank frame must never be
+  // indistinguishable from a crash.
   if (!loaded || decisions.primerCompleted) {
-    return null;
+    return (
+      <View style={styles.screen}>
+        <View style={styles.header}>
+          <Image source={require('../../assets/images/splash-icon.png')} style={styles.glyph} />
+          <Text style={styles.brand}>ANCHOR</Text>
+          <Text style={styles.subline}>GNSS INTEGRITY MONITOR</Text>
+        </View>
+      </View>
+    );
   }
 
   return (
