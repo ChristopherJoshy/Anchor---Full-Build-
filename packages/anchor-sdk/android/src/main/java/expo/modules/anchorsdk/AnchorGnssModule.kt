@@ -20,18 +20,35 @@ import java.util.concurrent.Executors
 private const val TAG = "AnchorGnss"
 
 /**
- * Maps [android.location.GnssMeasurement] CONSTELLATION_* integer codes to the
- * constellation vocabulary shared with the JS contract:
+ * CONSTELLATION_* integer codes, identical on android.location.GnssMeasurement
+ * and android.location.GnssStatus since API 24 and frozen by the public API
+ * (values verified against developer.android.com):
+ * UNKNOWN=0, GPS=1, SBAS=2, GLONASS=3, QZSS=4, BEIDOU=5, GALILEO=6, IRNSS=7.
+ *
+ * Referenced as local literals rather than symbolic constants: some EAS
+ * toolchains ship an android.jar (compileSdk 36) that does not expose
+ * GnssMeasurement.CONSTELLATION_* to the Kotlin compiler.
+ */
+private const val CONSTELLATION_GPS = 1
+private const val CONSTELLATION_GLONASS = 3
+private const val CONSTELLATION_BEIDOU = 5
+private const val CONSTELLATION_GALILEO = 6
+private const val CONSTELLATION_QZSS = 4
+private const val CONSTELLATION_IRNSS = 7
+
+/**
+ * Maps a GNSS constellation integer code to the constellation vocabulary
+ * shared with the JS contract:
  * "gps" | "glonass" | "beidou" | "galileo" | "qzss" | "irnss" | "unknown".
  * SBAS and anything unrecognized degrade to "unknown".
  */
 internal fun constellationName(constellationType: Int): String = when (constellationType) {
-    android.location.GnssMeasurement.CONSTELLATION_GPS -> "gps"
-    android.location.GnssMeasurement.CONSTELLATION_GLONASS -> "glonass"
-    android.location.GnssMeasurement.CONSTELLATION_BEIDOU -> "beidou"
-    android.location.GnssMeasurement.CONSTELLATION_GALILEO -> "galileo"
-    android.location.GnssMeasurement.CONSTELLATION_QZSS -> "qzss"
-    android.location.GnssMeasurement.CONSTELLATION_IRNSS -> "irnss"
+    CONSTELLATION_GPS -> "gps"
+    CONSTELLATION_GLONASS -> "glonass"
+    CONSTELLATION_BEIDOU -> "beidou"
+    CONSTELLATION_GALILEO -> "galileo"
+    CONSTELLATION_QZSS -> "qzss"
+    CONSTELLATION_IRNSS -> "irnss"
     else -> "unknown"
 }
 
