@@ -1,98 +1,179 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+/**
+ * First-launch permissions primer. Plain-language rows, one Continue, native
+ * dialogs in sequence (location first, then mic). Decisions persist so this
+ * screen never re-prompts.
+ */
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { usePermissions } from '@/hooks/usePermissions';
+import { colors, fonts, hairline, monoNumericBold, spacing } from '@/theme';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+function PermissionRow({ plate, line }: { plate: string; line: string }) {
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
+    <View style={styles.row}>
+      <View style={styles.plate}>
+        <Text style={styles.plateText}>{plate}</Text>
+      </View>
+      <Text style={styles.rowLine}>{line}</Text>
+    </View>
   );
 }
 
-export default function HomeScreen() {
+export default function PrimerScreen() {
+  const router = useRouter();
+  const { decisions, loaded, requestAll } = usePermissions();
+  const [requesting, setRequesting] = useState(false);
+
+  useEffect(() => {
+    if (loaded && decisions.primerCompleted) {
+      router.replace('/dashboard');
+    }
+  }, [loaded, decisions.primerCompleted, router]);
+
+  const onContinue = async () => {
+    if (requesting) {
+      return;
+    }
+    setRequesting(true);
+    await requestAll();
+    router.replace('/dashboard');
+  };
+
+  if (!loaded || decisions.primerCompleted) {
+    return null;
+  }
+
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+    <View style={styles.screen}>
+      <View style={styles.header}>
+        <Image source={require('../../assets/images/splash-icon.png')} style={styles.glyph} />
+        <Text style={styles.brand}>ANCHOR</Text>
+        <Text style={styles.subline}>GNSS INTEGRITY MONITOR</Text>
+      </View>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+      <View style={styles.divider} />
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
+      <View style={styles.rows}>
+        <PermissionRow
+          plate="GPS"
+          line="Location — reads GPS fixes to check them against physics"
+        />
+        <View style={styles.rowDivider} />
+        <PermissionRow
+          plate="MIC"
+          line="Microphone — hears voice commands like 'simulate spoof'"
+        />
+      </View>
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+      <View style={styles.footer}>
+        <Text style={styles.note}>
+          You can change these later in system settings. The instrument needs location to function;
+          voice commands are optional.
+        </Text>
+        <Pressable
+          style={({ pressed }) => [styles.continueBtn, pressed && styles.continueBtnPressed]}
+          onPress={onContinue}
+          disabled={requesting}
+        >
+          <Text style={styles.continueText}>{requesting ? 'WAITING…' : 'CONTINUE'}</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    justifyContent: 'center',
+    backgroundColor: colors.panelBg,
+    paddingHorizontal: spacing.xl,
+    paddingTop: 72,
+    paddingBottom: spacing.xl,
+  },
+  header: {
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  glyph: {
+    width: 120,
+    height: 120,
+  },
+  brand: {
+    ...monoNumericBold,
+    fontSize: 28,
+    letterSpacing: 8,
+    color: colors.textPrimary,
+  },
+  subline: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    letterSpacing: 3,
+    color: colors.textMuted,
+  },
+  divider: {
+    height: hairline,
+    backgroundColor: colors.chrome,
+    marginVertical: spacing.xl,
+  },
+  rows: {
+    gap: spacing.lg,
+  },
+  row: {
     flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
     alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
+    gap: spacing.md,
   },
-  heroSection: {
+  plate: {
+    width: 56,
+    height: 40,
+    borderWidth: hairline,
+    borderColor: colors.trusted,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.panelSurface,
+  },
+  plateText: {
+    ...monoNumericBold,
+    fontSize: 12,
+    color: colors.trusted,
+  },
+  rowLine: {
     flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textPrimary,
   },
-  title: {
-    textAlign: 'center',
+  rowDivider: {
+    height: hairline,
+    backgroundColor: colors.chrome,
   },
-  code: {
-    textTransform: 'uppercase',
+  footer: {
+    marginTop: 'auto',
+    gap: spacing.lg,
   },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+  note: {
+    fontFamily: fonts.sans,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.textMuted,
+  },
+  continueBtn: {
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.trusted,
+    borderWidth: hairline,
+    borderColor: colors.trusted,
+  },
+  continueBtnPressed: {
+    backgroundColor: colors.panelBg,
+  },
+  continueText: {
+    ...monoNumericBold,
+    fontSize: 14,
+    letterSpacing: 4,
+    color: colors.textOnColor,
   },
 });
