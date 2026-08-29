@@ -44,3 +44,11 @@
 - src/index.ts exports the complete surface: native binding, sensor hooks, six checks, solarCompassHeading, evaluateIntegrity/stepIntegrity, createAnchorSDK/AnchorProvider, AI wrappers, contract types
 - README: quick start, state machine table, thresholds table, native module events/status docs, AI guarantees, autolinking notes
 - 70 jest tests green, tsc --noEmit clean
+
+## 2026-08-29 — feat(anchor-demo): complete instrument app + first green EAS build (apps/)
+- full instrument UI: StatusStrip (state fill + crossfade), six PFD-style TapeGauges (scrolling tick tape, fixed center readout, eased via Reanimated), EventLog flight recorder, BottomBar with labeled TEST HARNESS (SIMULATE SPOOF injects 5 teleported fixes + 5 lockstep-waveform C/N0 epochs through the normal pipeline; RESET swaps in a fresh createAnchorSDK to clear the SDK-internal debounce machine; SHOW REASON reveals last explanation), mic capture via expo-audio AudioStream (16 kHz mono float32, fully offline) -> sdk.transcribe -> fixed command matching, semantic search (sdk.embed query -> cosine vs stored reason vectors)
+- pipeline aligned with final SDK semantics: no prevState threading (SDK owns recovery-debounce), AnchorProvider at router root, useGnssMeasurements(30)
+- expo-doctor 21/21; tsc --noEmit clean against complete anchor-sdk contract
+  - app.json: removed SDK-57-removed android.edgeToEdgeEnabled/android.statusBar fields; async-storage pinned 2.2.0
+  - local bundling proof: repaired npm-corrupted react-native-worklets (missing src/threads.ts), full 1892-module Metro graph + 5 MB Hermes bytecode via expo export (hermesc x86_64 binary shimmed through qemu-x86_64 on this arm64 box)
+- EAS development build 254e5629-9aa6-476f-ac31-b04c800e9de9 FINISHED (post anchor-sdk Kotlin constellation fix 5ba7532); APK downloaded to apps/anchor-demo/releases/anchor-dev.apk (gitignored: 258 MB exceeds GitHub 100 MB blob limit — artifact lives at https://expo.dev/accounts/iamchris2005/projects/anchor/builds/254e5629-9aa6-476f-ac31-b04c800e9de9)

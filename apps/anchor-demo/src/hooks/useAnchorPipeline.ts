@@ -7,9 +7,14 @@
  * fix, records state transitions into the flight-recorder event log, and
  * exposes the labeled SIMULATE SPOOF test-harness injection (synthetic jumped
  * fix burst + degraded C/N0 epochs pushed through the normal pipeline).
+ *
+ * The SDK's evaluate() owns the recovery-debounce state machine internally
+ * (prevState only seeds its first call), so this hook never threads its own
+ * state; RESET swaps in a fresh SDK instance, which resets that machine.
  */
 import { useBarometerStream, useGnssMeasurements, useImuStream, useLocationStream } from 'anchor-sdk';
 import type {
+  AnchorSDK,
   BaroSample,
   CheckId,
   Fix,
@@ -20,7 +25,7 @@ import type {
 } from 'anchor-sdk';
 import { createAnchorSDK } from 'anchor-sdk';
 import * as Haptics from 'expo-haptics';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const WINDOW_FIX_CAP = 60;
 export const WINDOW_IMU_CAP = 60;
@@ -49,8 +54,8 @@ function pushCapped<T>(arr: T[], item: T, cap: number): T[] {
 /**
  * Builds the labeled SIMULATE SPOOF segment: fixes that teleport ~400 m per
  * second while claiming implausibly good accuracy and a speed that does not
- * match the implied displacement. The SDK's kinematic/cn0 checks do the
- * judging; this only fabricates the sensor frames the demo injects.
+ * match the implied displacement. The SDK's checks do the judging; this only
+ * fabricates the sensor frames the demo injects.
  */
 function buildSpoofFixes(base: Fix, count: number): Fix[] {
   const out: Fix[] = [];
@@ -72,8 +77,14 @@ function buildSpoofFixes(base: Fix, count: number): Fix[] {
   return out;
 }
 
-/** Synthetic measurement epoch with a collapsing C/N0 profile. */
-function buildSpoofGnssEpoch(timestamp: number): GnssMeasurementSample {
+/**
+ * Synthetic measurement epoch whose satellites move in LOCKSTEP — every
+ * satellite traces the same waveform across the injected epochs, which is the
+ * signature of a generated (spoofed) constellation. Waveform variance stays
+ * above the flat-signal skip threshold so the SDK's cn0Check flags it instead
+ * of skipping it.
+ */
+function buildSpoofGnssEpoch(timestamp: number, epochIdx: number): GnssMeasurementSample {
   const constellations = [
     'GPS',
     'GPS',
@@ -92,14 +103,15 @@ function buildSpoofGnssEpoch(timestamp: number): GnssMeasurementSample {
     satellites: constellations.map((constellation, i) => ({
       svid: i + 1,
       constellation,
-      cn0DbHz: 14 + ((i * 7) % 9), // 14..22 dB-Hz — deep degradation vs typical 30..50
+      cn0DbHz: 22 + 8 * Math.sin(epochIdx), // identical across satellites per epoch
     })),
     timestamp,
   };
 }
 
 export function useAnchorPipeline() {
-  const sdk = useMemo(() => createAnchorSDK(), []);
+  // The SDK instance owns the recovery-debounce machine; RESET replaces it.
+  const [sdk, setSdk] = useState<AnchorSDK>(() => createAnchorSDK());
   const location = useLocationStream();
   const imu = useImuStream();
   const baro = useBarometerStream();
@@ -110,12 +122,11 @@ export function useAnchorPipeline() {
   const [spoofing, setSpoofing] = useState(false);
 
   // Sensor window lives in refs: sensor ticks are far more frequent than
-  // renders; only verdicts trigger UI updates.
+  // renders; only verdict changes re-render the instrument.
   const fixesRef = useRef<Fix[]>([]);
   const imuRef = useRef<ImuSample[]>([]);
   const baroRef = useRef<BaroSample[]>([]);
   const gnssRef = useRef<GnssMeasurementSample[]>([]);
-  const prevStateRef = useRef<IntegrityState | undefined>(undefined);
   const lastStateRef = useRef<IntegrityState | null>(null);
   const eventIdRef = useRef(0);
   // Pending SIMULATE SPOOF frames queued by injectSpoof().
@@ -194,16 +205,12 @@ export function useAnchorPipeline() {
       gnssRef.current = pushCapped(gnssRef.current, spoofEpoch, WINDOW_GNSS_CAP);
     }
 
-    const v = sdk.evaluate(
-      {
-        fixes: fixesRef.current,
-        imu: imuRef.current,
-        baro: baroRef.current,
-        gnss: gnssRef.current,
-      },
-      prevStateRef.current,
-    );
-    prevStateRef.current = v.state;
+    const v = sdk.evaluate({
+      fixes: fixesRef.current,
+      imu: imuRef.current,
+      baro: baroRef.current,
+      gnss: gnssRef.current,
+    });
     setVerdict(v);
 
     if (lastStateRef.current !== v.state) {
@@ -211,8 +218,7 @@ export function useAnchorPipeline() {
       recordTransition(v);
       hapticForState(v.state);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.fix, recordTransition, hapticForState, sdk]);
+  }, [location.fix, imu.sample, baro.sample, gnss.latest, sdk, recordTransition, hapticForState]);
 
   /** Labeled test-harness control: queue a jumped fix burst + degraded C/N0. */
   const injectSpoof = useCallback(() => {
@@ -231,7 +237,7 @@ export function useAnchorPipeline() {
     spoofFixesRef.current = spoofFixesRef.current.concat(buildSpoofFixes(base, 5));
     const now = Date.now();
     spoofGnssRef.current = spoofGnssRef.current.concat(
-      [0, 1, 2, 3, 4].map((i) => buildSpoofGnssEpoch(now + i * 1000)),
+      [0, 1, 2, 3, 4].map((epochIdx) => buildSpoofGnssEpoch(now + epochIdx * 1000, epochIdx)),
     );
   }, []);
 
@@ -244,11 +250,12 @@ export function useAnchorPipeline() {
     imuRef.current = [];
     baroRef.current = [];
     gnssRef.current = [];
-    prevStateRef.current = undefined;
     lastStateRef.current = null;
     eventIdRef.current = 0;
     setVerdict(null);
     setEvents([]);
+    // Fresh instance resets the SDK-internal recovery-debounce machine.
+    setSdk(createAnchorSDK());
   }, []);
 
   return {
