@@ -37,6 +37,9 @@ export function useImuStream(): ImuStream {
 
   useEffect(() => {
     let cancelled = false;
+    // Per-subscription handles so teardown never disturbs other consumers
+    // (removeAllListeners would kill subscriptions owned by other components).
+    const subscriptions: Array<{ remove: () => void }> = [];
 
     const emit = () => {
       setSample({
@@ -59,7 +62,7 @@ export function useImuStream(): ImuStream {
 
       if (magAvailable) {
         Magnetometer.setUpdateInterval(UPDATE_INTERVAL_MS);
-        Magnetometer.addListener(({ x, y }) => {
+        subscriptions.push(Magnetometer.addListener(({ x, y }) => {
           if (cancelled) return;
           const magHeading = magnetometerHeadingDeg(x, y);
           headingRef.current =
@@ -67,12 +70,12 @@ export function useImuStream(): ImuStream {
               ? magHeading
               : headingRef.current + MAG_GAIN * wrapAngleDelta(magHeading - headingRef.current);
           emit();
-        });
+        }));
       }
 
       if (gyroAvailable) {
         Gyroscope.setUpdateInterval(UPDATE_INTERVAL_MS);
-        Gyroscope.addListener(({ x, y, z }) => {
+        subscriptions.push(Gyroscope.addListener(({ x, y, z }) => {
           if (cancelled) return;
           const now = Date.now();
           const last = lastGyroTimeRef.current;
@@ -86,7 +89,7 @@ export function useImuStream(): ImuStream {
           lastGyroTimeRef.current = now;
           latestGyroRef.current = { x, y, z };
           emit();
-        });
+        }));
       }
     })().catch((e: unknown) => {
       if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -94,8 +97,7 @@ export function useImuStream(): ImuStream {
 
     return () => {
       cancelled = true;
-      Magnetometer.removeAllListeners();
-      Gyroscope.removeAllListeners();
+      for (const subscription of subscriptions) subscription.remove();
     };
   }, []);
 
