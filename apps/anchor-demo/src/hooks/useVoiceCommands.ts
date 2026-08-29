@@ -16,15 +16,17 @@ function normalize(text: string): string {
   return text.toLowerCase().replace(/\s+/g, ' ').trim().replace(/[.,!?]/g, '');
 }
 
-/** Returns the first fixed command contained in the transcript, if any. */
+/** Returns the fixed command that occurs earliest in the transcript, if any. */
 export function matchCommand(transcript: string): VoiceCommand | null {
   const normalized = normalize(transcript);
+  let best: { command: VoiceCommand; index: number } | null = null;
   for (const command of VOICE_COMMANDS) {
-    if (normalized.includes(command)) {
-      return command;
+    const index = normalized.indexOf(command);
+    if (index >= 0 && (best === null || index < best.index)) {
+      best = { command, index };
     }
   }
-  return null;
+  return best?.command ?? null;
 }
 
 export function useVoiceCommands(sdk: AnchorSDK, onCommand: (command: VoiceCommand) => void) {
