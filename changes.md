@@ -74,3 +74,12 @@
 - EAS production build 6004d5eb-92b0-42a5-9f9b-84a802bf66c9 FINISHED: https://expo.dev/accounts/iamchris2005/projects/anchor/builds/6004d5eb-92b0-42a5-9f9b-84a802bf66c9 — verified: assets/index.android.bundle (4,107,360 B) embedded, 0 dev-launcher/expo-dev-client entries
 - rolling release `latest` deleted + recreated with the new APK (184,483,309 B): https://github.com/ChristopherJoshy/Anchor---Full-Build-/releases/tag/latest
 - LFS object replaced (45eb611492 -> d9996625d3) — commit 5a384c1
+
+## 2026-08-29 — fix(anchor-demo): blank-launch hardening — ErrorBoundary, startup milestones, resilient font gate, react compiler off
+- reported: production apk blank at launch in emulator (persists after user's local fixes; no fix commits found on the remote — full ref search: ls-remote, branch -r, branches API, PR list, commits API all show main == 520f13c only)
+- RootErrorBoundary at app root: render exceptions now paint error + component stack (DENIED-styled) instead of a blank frame
+- [anchor:startup] milestone logs (fonts/provider/primer decisions/dashboard mount) — `adb logcat | grep anchor:startup` pinpoints a stall
+- font gate: load failure or >10 s hang proceeds with system fonts instead of returning null forever; primer renders its shell instead of null while decisions load
+  - static audit found: useFonts gate rendered null permanently on font error; no ErrorBoundary (production uncaught = blank); SDK AI imports are dynamic (no import-time JSI); sensor listeners are effect-scoped; main=expo-router/entry correct; worklets babel plugin auto-applied by babel-preset-expo
+- experiments.reactCompiler disabled (known release-miscompile source; not needed)
+- pre-verified before shipping: tsc clean, expo export bundle contains all 6 milestone strings + route keys, expo-doctor 21/21
