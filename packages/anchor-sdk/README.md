@@ -164,7 +164,7 @@ interface Verdict { state: IntegrityState; failedChecks: CheckId[]; results: Che
 
 | Hook | Returns | Rate |
 | --- | --- | --- |
-| `useLocationStream()` | `{ fix: Fix \| null, error: string \| null, granted: boolean }` | 1 Hz, Balanced accuracy |
+| `useLocationStream()` | `{ fix: Fix \| null, error: string \| null, granted: boolean }` | 1 Hz, High accuracy (~10 m fixes) |
 | `useImuStream()` | `{ sample: ImuSample \| null, error: string \| null }` | ~10 Hz per sensor; complementary filter fuses gyro integration with magnetometer heading (`atan2(-mx, my)`, portrait, near-flat) |
 | `useBarometerStream()` | `{ sample: BaroSample \| null, error: string \| null }` | ~10 Hz |
 | `useGnssMeasurements(historyLength = 600)` | `{ latest, history, error, status, supported }` | 1 Hz measurement epochs; last N epochs kept in a ring buffer |

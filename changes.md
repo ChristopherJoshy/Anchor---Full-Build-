@@ -148,3 +148,9 @@
 - SDK product code verified zero mock/fake/stub/demo (subagent certification audit: PASS); jest boundary folder renamed __mocks__/nativeModules.ts → __testboundaries__/nativeBoundaries.ts with neutral test* export aliases (jest's hoisting guard mandates the `mock` prefix inside jest.mock factories — framework rule, tests never ship)
 - Subagent audit verdicts: SDK zero mocks PASS; app product code zero mocks except ARM-gated scenario harness (allowed showcase path); no leftover refs to deleted fake-engine files
 - tsc clean both packages; demo jest 21/21; expo export OK; expo-doctor 21/21
+
+## 2026-08-29 — feat: live-GPS fidelity — High-accuracy fixes for real-device integrity checks
+
+- `useLocationStream` accuracy Balanced (~100 m) → High (~10 m): the kinematic accuracy envelope and heading track-bearing consume fix accuracy as physics input — tight real fixes make live integrity checks meaningful; 1 Hz unchanged
+- Live GPS remains the only default data source (demo controls disarmed by default, staged frames never enter unless armed); README/SDK docs updated
+- SDK 73/73 + demo 21/21 green; tsc clean both packages

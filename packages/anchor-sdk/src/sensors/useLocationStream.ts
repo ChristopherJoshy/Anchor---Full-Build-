@@ -12,7 +12,12 @@ export interface LocationStream {
 }
 
 /**
- * Streams foreground location fixes at 1 Hz (Balanced accuracy).
+ * Streams foreground location fixes at 1 Hz (High accuracy, ~10 m fixes).
+ *
+ * High (not Balanced) is deliberate: the kinematic envelope and heading
+ * track-bearing checks judge the fix against its reported accuracy — tight,
+ * trustworthy fixes make the integrity checks meaningful, and the accuracy
+ * value itself is part of the physics.
  *
  * Permission policy: the embedding app is responsible for requesting location
  * permission BEFORE mounting this hook; this hook only reads the current
@@ -46,7 +51,7 @@ export function useLocationStream(): LocationStream {
       }
 
       subscription = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.Balanced, timeInterval: 1000 },
+        { accuracy: Location.Accuracy.High, timeInterval: 1000 },
         (location) => {
           if (cancelled) return;
           setError(null);
