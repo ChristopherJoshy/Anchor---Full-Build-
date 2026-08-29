@@ -63,7 +63,9 @@ function pearson(a: number[], b: number[]): number | null {
  * with a note. passed = no run flagged.
  */
 export function cn0Check(window: SensorWindow): CheckResult {
-  const eligible = window.gnss.filter((epoch) => epoch.satellites.length >= MIN_SATELLITES_PER_EPOCH);
+  const eligible = window.gnss.filter(
+    (epoch) => Number.isFinite(epoch.timestamp) && epoch.satellites.length >= MIN_SATELLITES_PER_EPOCH,
+  );
   if (eligible.length < MIN_EPOCHS) {
     return {
       id: 'cn0',
@@ -80,7 +82,7 @@ export function cn0Check(window: SensorWindow): CheckResult {
     // A frozen or backwards clock is a replay boundary: start a new run.
     if (run.length > 0) {
       const gapSeconds = (eligible[i].timestamp - run[run.length - 1].timestamp) / 1000;
-      if (gapSeconds > RUN_SPLIT_GAP_S || gapSeconds <= 0) {
+      if (!Number.isFinite(gapSeconds) || gapSeconds > RUN_SPLIT_GAP_S || gapSeconds <= 0) {
         runs.push([]);
       }
     }

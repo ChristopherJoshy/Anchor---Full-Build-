@@ -48,7 +48,6 @@ export function kinematicCheck(window: SensorWindow): CheckResult {
     ) {
       pairs += 1;
       violations += 1;
-      teleport = false;
       continue;
     }
     const dtSeconds = (b.timestamp - a.timestamp) / 1000;
@@ -63,11 +62,6 @@ export function kinematicCheck(window: SensorWindow): CheckResult {
     pairs += 1;
     if (implied > TELEPORT_SPEED_MS) {
       teleport = true;
-      violations += 1;
-      continue;
-    }
-    // Unknown accuracy (Infinity) must not give infinite tolerance — treat as violation.
-    if (!Number.isFinite(a.accuracy) || !Number.isFinite(b.accuracy)) {
       violations += 1;
       continue;
     }

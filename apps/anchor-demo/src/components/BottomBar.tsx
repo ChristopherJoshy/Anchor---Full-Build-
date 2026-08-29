@@ -25,6 +25,9 @@ function HarnessButton({ label, onPress, active }: { label: string; onPress: () 
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: !!active }}
       style={({ pressed }) => [
         styles.harnessBtn,
         active && styles.harnessBtnActive,
@@ -87,6 +90,9 @@ export function BottomBar({
         <Pressable
           onPress={onToggleMic}
           disabled={micDenied || processing}
+          accessibilityRole="button"
+          accessibilityLabel={micDenied ? 'Microphone disabled' : recording ? 'Stop recording' : 'Start recording'}
+          accessibilityState={{ disabled: micDenied || processing, selected: recording }}
           style={[styles.micBtn, recording && styles.micBtnRecording, micDenied && styles.micBtnDisabled]}
         >
           <Text
@@ -133,6 +139,7 @@ const styles = StyleSheet.create({
   harnessRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   harnessLabel: {

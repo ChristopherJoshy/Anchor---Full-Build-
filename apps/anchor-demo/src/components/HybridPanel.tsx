@@ -81,7 +81,10 @@ export function HybridPanel({ verdict, reasoning, timing, cached, hybridConfiden
 
       <View style={styles.modelRow}>
         <Text style={styles.modelLabel}>{QUANTIZED_LABEL}</Text>
-        <Text style={styles.modelMeta}>deterministic RAIM/FDE + quantized reasoning • joint accuracy boost</Text>
+        <Text style={styles.modelMeta}>deterministic RAIM/FDE (authoritative) + quantized reasoning (advisory) • joint accuracy boost</Text>
+        {SHOWCASE_FAKE_QUANTIZED ? (
+          <Text style={styles.modelMeta}>Demo showcase: reasoning synthesized from verdict (no 1.7B bundle) — deterministic is authoritative</Text>
+        ) : null}
       </View>
     </View>
   );

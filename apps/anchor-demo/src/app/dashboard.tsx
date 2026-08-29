@@ -71,15 +71,18 @@ export default function DashboardScreen() {
       setHybridConf(null);
       return;
     }
+    let cancelled = false;
     const detMs = 5 + Math.floor(Math.random() * 8);
     void (async () => {
       const res = await hybridExplain(pipeline.verdict!, sdk);
+      if (cancelled) return;
       const total = detMs + res.quantizedMs;
       setHybridReasoning(res.reasoning);
       setHybridTiming({ deterministicMs: detMs, quantizedMs: res.quantizedMs, totalMs: total });
       setHybridCached(res.cached);
       setHybridConf(hybridConfidenceOf(pipeline.verdict!));
     })();
+    return () => { cancelled = true; };
   }, [pipeline.verdict, sdk]);
 
   const onCommand = useCallback(
