@@ -1,4 +1,4 @@
-import { buildExplanationPrompt } from '../ai/explainVerdict';
+import { buildExplanationPrompt, stripThinking } from '../ai/explainVerdict';
 import type { Verdict } from '../types';
 
 const verdict: Verdict = {
@@ -54,5 +54,23 @@ describe('buildExplanationPrompt', () => {
 
   it('is deterministic for the same verdict', () => {
     expect(buildExplanationPrompt(verdict)).toEqual(buildExplanationPrompt(verdict));
+  });
+});
+
+describe('stripThinking', () => {
+  it('removes Qwen3 thinking blocks and trims', () => {
+    expect(stripThinking('<think>\nLet me analyze the verdict...\n</think>\n\nYour position data is being rejected.')).toBe(
+      'Your position data is being rejected.',
+    );
+  });
+
+  it('is a no-op for answers without thinking tags (e.g. Llama output)', () => {
+    expect(stripThinking('Your position data looks trustworthy.')).toBe(
+      'Your position data looks trustworthy.',
+    );
+  });
+
+  it('handles multiple blocks and surrounding whitespace', () => {
+    expect(stripThinking('  <think>a</think>Answer <think>b</think>  ')).toBe('Answer');
   });
 });

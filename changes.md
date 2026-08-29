@@ -83,3 +83,10 @@
   - static audit found: useFonts gate rendered null permanently on font error; no ErrorBoundary (production uncaught = blank); SDK AI imports are dynamic (no import-time JSI); sensor listeners are effect-scoped; main=expo-router/entry correct; worklets babel plugin auto-applied by babel-preset-expo
 - experiments.reactCompiler disabled (known release-miscompile source; not needed)
 - pre-verified before shipping: tsc clean, expo export bundle contains all 6 milestone strings + route keys, expo-doctor 21/21
+
+## 2026-08-29 — feat: swap explainer LLM to Qwen3 1.7B (quantized) per model-zoo research
+- Researched installed react-native-executorch 0.9.3 registry: 24 LLMs (incl. qwen3_0_6b/1_7b/4b/3_5_0_8b/3_5_2b, qwen2_5_0_5b/1_5b/3b, llama3_2_1b/3b, smollm2_1_135m/360m/1_7b, phi_4_mini_4b, hammer2_1, gemma4_e2b, lfm2_5 family, bielik), 6 STT (whisper tiny/base/small x en/multilingual), 7 embedders (all_mpnet_base_v2 best English; clip text + 2 multilingual also shipped)
+- Explainer: llama3_2_1b -> qwen3_1_7b (registry default = 8da4w-quantized pte; resolveCell(opts.quant !== false) proves default quantization). ASR whisper_base_en and embedder all_mpnet_base_v2 kept (best-fit rationale in report)
+- Qwen3 thinking-mode normalization: stripThinking() removes <think> blocks (enable_thinking not exposed by generate()); system prompt tightened
+- Docs: package README model table + deviations; root README model-table lines only (4 lines: explain rows x2, embed rows x2 — embed was mislabeled multi-qa-mpnet-base-v2, actually all-mpnet-base-v2)
+- 73 jest tests green (3 new stripThinking cases), tsc clean

@@ -57,12 +57,12 @@ const llmSlot: { promise: Promise<LLMModule> | null } = { promise: null };
 const sttSlot: { promise: Promise<SpeechToTextModule> | null } = { promise: null };
 const embeddingsSlot: { promise: Promise<TextEmbeddingsModule> | null } = { promise: null };
 
-/** Llama 3.2 1B, quantized (default variant of the registry accessor). */
+/** Qwen3 1.7B, 8da4w-quantized (default variant of the registry accessor). */
 export function loadLlm(): Promise<LLMModule> {
   return cached(llmSlot, async () => {
     await ensureInitialized();
     const executorch = await import('react-native-executorch');
-    return executorch.LLMModule.fromModelName(executorch.models.llm.llama3_2_1b());
+    return executorch.LLMModule.fromModelName(executorch.models.llm.qwen3_1_7b());
   });
 }
 

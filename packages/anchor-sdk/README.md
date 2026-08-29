@@ -114,7 +114,7 @@ runtime by the library — never bundled):
 
 | Task | Model | API |
 | --- | --- | --- |
-| `explain(verdict) → Promise<string>` | Llama 3.2 1B (quantized) | deterministic prompt template; stateless generation; 1–2 sentence plain-language explanation |
+| `explain(verdict) → Promise<string>` | Qwen3 1.7B (8da4w-quantized) | deterministic prompt template; stateless generation; 1–2 sentence plain-language explanation; Qwen3 thinking blocks stripped |
 | `transcribe(Float32Array) → Promise<string>` | Whisper base.en | 16 kHz mono PCM in, transcript text out |
 | `embed(text) → Promise<number[]>` | all-mpnet-base-v2 | pooled 768-d vector |
 
@@ -126,7 +126,10 @@ Guarantees:
   `explain` strictly maps `Verdict → Promise<string>`.
 - Deviations from the original model plan: the embedding model shipped by the
   registry is `all_mpnet_base_v2` (`multi-qa-mpnet-base-v2` is not in the
-  zoo); Llama 3.2 1B uses the registry's default quantized variant.
+  zoo); the explainer is `qwen3_1_7b` (registry default = 8da4w-quantized
+  variant). Qwen3's chat template defaults to thinking mode (`enable_thinking`
+  is not exposed by the library's `generate()`), so `explainVerdict` strips
+  `<think>...</think>` blocks from responses.
 
 ## API reference
 

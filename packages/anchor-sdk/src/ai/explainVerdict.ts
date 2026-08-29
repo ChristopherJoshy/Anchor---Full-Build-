@@ -38,15 +38,25 @@ Explain in 1-2 plain-language sentences what is happening with the position data
     {
       role: 'system',
       content:
-        'You explain on-device GPS integrity verdicts in plain language. Answer with one or two short sentences, no lists, no advice.',
+        'You explain on-device GPS integrity verdicts in plain language. Answer with one or two short sentences, no lists, no advice, no reasoning process.',
     },
     user,
   ];
 }
 
 /**
+ * Normalizes model output: Qwen3's chat template runs in thinking mode when
+ * `enable_thinking` is not passed (the library's generate() does not expose
+ * template flags), so the raw response can carry a <think>...</think> block.
+ * Llama-family output never contains the tags, so stripping is a no-op there.
+ */
+export function stripThinking(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+}
+
+/**
  * Explains a verdict in plain language using the on-device LLM
- * (Llama 3.2 1B quantized via ExecuTorch).
+ * (Qwen3 1.7B, 8da4w-quantized via ExecuTorch).
  *
  * STRICT: takes the verdict, returns text. There is deliberately no path from
  * here back to the state machine — explanations can never change state.
@@ -57,5 +67,5 @@ Explain in 1-2 plain-language sentences what is happening with the position data
 export async function explainVerdict(verdict: Verdict): Promise<string> {
   const llm = await loadLlm();
   const response = await llm.generate(buildExplanationPrompt(verdict));
-  return response.trim();
+  return stripThinking(response);
 }

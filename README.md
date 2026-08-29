@@ -185,9 +185,9 @@ All models run via **react-native-executorch** on **XNNPACK CPU** (prebuilt AAR 
 
 | Capability | Model | Input → output |
 | --- | --- | --- |
-| `explain` | Llama-3.2-1B (quantized) | `Verdict` → 1–2 plain-English sentences |
+| `explain` | Qwen3-1.7B (8da4w-quantized) | `Verdict` → 1–2 plain-English sentences |
 | `transcribe` | whisper-base.en | `Float32Array` (16 kHz mono PCM) → transcript |
-| `embed` | multi-qa-mpnet-base-v2 | text → embedding vector |
+| `embed` | all-mpnet-base-v2 | text → 768-d embedding vector |
 
 The type-level contract matters: `explain(verdict)` takes a `Verdict` and returns a `Promise<string>`. It structurally *cannot* mutate sensor state or flip the safety machine — AI advises, physics decides.
 
@@ -355,9 +355,9 @@ const vector      = await anchor.embed("signal looked synthetic"); // number[] f
 | Method | Signature | Engine | Notes |
 | --- | --- | --- | --- |
 | `evaluate` | `(window: SensorWindow, prevState?: IntegrityState) => Verdict` | six pure checks + weighted RAIM/FDE state machine | synchronous, no I/O; same window + previous state → same verdict |
-| `explain` | `(verdict: Verdict) => Promise<string>` | Llama-3.2-1B quantized (ExecuTorch, XNNPACK) | 1–2 plain sentences; type-level guarantee it never touches state |
+| `explain` | `(verdict: Verdict) => Promise<string>` | Qwen3-1.7B 8da4w-quantized (ExecuTorch, XNNPACK) | 1–2 plain sentences; type-level guarantee it never touches state |
 | `transcribe` | `(audio: Float32Array) => Promise<string>` | whisper-base.en (ExecuTorch, XNNPACK) | 16 kHz mono PCM; powers the fixed voice-command set |
-| `embed` | `(text: string) => Promise<number[]>` | multi-qa-mpnet-base-v2 (ExecuTorch, XNNPACK) | powers semantic event-log search |
+| `embed` | `(text: string) => Promise<number[]>` | all-mpnet-base-v2 (ExecuTorch, XNNPACK) | 768-d vector; powers semantic event-log search |
 
 All three AI calls lazy-load their model on first invocation; the safety path pays nothing for AI.
 
