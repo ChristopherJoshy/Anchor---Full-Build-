@@ -128,3 +128,16 @@
 - primer `paddingTop` 72 → spacing.xl (SafeArea already insets top — double offset removed)
 - Only synthesized element remains the Qwen advisory TEXT (showcase, labeled) — all numbers, states, gauges, telemetry are measured
 - tsc clean both packages; demo jest 21/21 (--runInBand); expo export 5.1MB hbc; expo-doctor 21/21
+
+## 2026-08-29 — feat: zero-mock implementation — real VPN detection, real advisory, iQOO 15 island capsule
+
+- Mocking banned across the app: deleted the fake hybrid showcase engine (synthesized Qwen text, fake timing, fake ADV%) — every displayed value is now measured or real SDK output
+- SDK: new native `AnchorNetModule.kt` — real OS VPN detection (kernel tun/tap interface scan + ConnectivityManager TRANSPORT_VPN), registered in expo-module.config.json; `AnchorNet` exported from SDK index
+- Demo `useNetworkIntegrity`: polls real `AnchorNet.isVpnActive()` every 2 s; real HTTPS IP geolocation (ipwho.is → ipapi.co fallback) every 60 s; real haversine IP↔GPS divergence (limit 150 km) — banner + flight-recorder events on tunnel up/down and divergence; GNSS physics stay authoritative (VPN ≠ spoof, per fraud-detection research)
+- Advisory: real on-device Qwen3 1.7B via `sdk.explain` (lazy ExecuTorch load) — deterministic reason shown, clearly labeled, until the model produces text; `IntegrityPanel` replaces HybridPanel (EVAL ms measured via performance.now, CONF real, FAILED checks real, advisory source labeled)
+- Test harness: DISARMED by default (`LIVE SENSORS ONLY`); ARM switch gates all attack staging (teleport/cn0/alt/hdg/time/env/attack→DENIED) + RECOVERY PATH — full real machine arc TRUSTED→DEGRADED→DENIED→(5 clean evals)→RECOVERING→TRUSTED in ~20 s (window caps 12); frames enter the same evaluate() path as live GPS
+- Stall-proof 1 Hz engine + immediate new-fix path (900 ms guard) — status never freezes; no dead-end screen when GPS denied/indoor: banner + OPEN SETTINGS + full instrument stays usable
+- RECOVERY VERIFIED latch derived from real flight-recorder transitions (RECOVERING@t → TRUSTED@t)
+- Telemetry rail: POS/ALT/ACC/SPD/TRK/SAT/BARO + SENSORS health row (GPS/IMU/BARO/GNSS ✓✗ with sample counts, fix age) — all measured
+- `IslandCapsule`: Dynamic-Island-style capsule for the iQOO 15 demo device — pill hugs the camera cutout (state color, live conf), auto-expands on non-TRUSTED transitions (reason, CONF, EVAL, FAILED, VPN tunnel+divergence), tap toggles, Reanimated morph
+- SDK 73/73 + demo 21/21 green; tsc clean both; expo export 5.1MB hbc; expo-doctor 21/21

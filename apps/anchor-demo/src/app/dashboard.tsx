@@ -1,27 +1,30 @@
 /**
- * Instrument dashboard — single screen, no scroll feed. StatusStrip on top,
- * six PFD tape gauges, flight-recorder event log, persistent bottom bar with
- * voice + semantic search + labeled test harness.
+ * Instrument dashboard — real signals only. StatusStrip + live telemetry rail,
+ * six PFD tape gauges, integrity panel (deterministic + real Qwen advisory),
+ * flight-recorder event log, and the TEST HARNESS (disarmed by default; armed
+ * frames enter the same real pipeline). The instrument is fully functional
+ * with zero harness input — the harness only stages attacks that cannot be
+ * performed live.
  */
 import { BottomBar } from '@/components/BottomBar';
 import { EventLog } from '@/components/EventLog';
+import { IntegrityPanel } from '@/components/IntegrityPanel';
+import { IslandCapsule } from '@/components/IslandCapsule';
 import { StatusStrip } from '@/components/StatusStrip';
 import { TapeGauge } from '@/components/TapeGauge';
 import { useAnchorPipeline } from '@/hooks/useAnchorPipeline';
 import type { EventLogEntry } from '@/hooks/useAnchorPipeline';
+import { useNetworkIntelligence, DIVERGENCE_LIMIT_KM } from '@/hooks/useNetworkIntegrity';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useVoiceCommands } from '@/hooks/useVoiceCommands';
 import { colors, colorForIntegrityState, fonts, hairline, monoNumeric, monoNumericBold, spacing } from '@/theme';
 import type { AnchorSDK, CheckId, CheckResult } from 'anchor-sdk';
 import { Linking } from 'react-native';
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { cosineSimilarity } from '@/lib/search';
 import { startupLog } from '@/lib/startupLog';
-import { HybridPanel } from '@/components/HybridPanel';
-import { hybridExplain } from '@/lib/hybridEngine';
-
 
 const CHECK_ORDER: CheckId[] = ['kinematic', 'heading', 'temporal', 'altitude', 'environmental', 'cn0'];
 
@@ -30,61 +33,27 @@ interface SearchOverlayData {
   hits: Array<{ entry: EventLogEntry; score: number }>;
 }
 
-/** Location-denied real empty state — the instrument cannot function. */
-function LocationDenied() {
-  return (
-    <View style={styles.deniedWrap}>
-      <Text style={styles.deniedTitle}>NO POSITION SOURCE</Text>
-      <Text style={styles.deniedBody}>
-        Anchor can&apos;t function without location. It reads GPS fixes to check them against
-        physics; without them there is nothing to verify.
-      </Text>
-      <Pressable style={styles.deniedBtn} onPress={() => void Linking.openSettings()}>
-        <Text style={styles.deniedBtnText}>OPEN SETTINGS</Text>
-      </Pressable>
-    </View>
-  );
+function formatClock(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
 }
-
 
 export default function DashboardScreen() {
   const { decisions, loaded: permsLoaded } = usePermissions();
   const pipeline = useAnchorPipeline();
   const [searchOverlay, setSearchOverlay] = useState<SearchOverlayData | null>(null);
   const [reasonPanel, setReasonPanel] = useState(false);
-  const [hybridReasoning, setHybridReasoning] = useState<string | null>(null);
-  const [hybridTiming, setHybridTiming] = useState<{ deterministicMs: number; quantizedMs: number | null; totalMs: number } | null>(null);
-  const [hybridCached, setHybridCached] = useState(false);
-  const [hybridConf, setHybridConf] = useState<number | null>(null);
 
   useEffect(() => {
     startupLog(`dashboard mounted: location=${decisions.location} mic=${decisions.mic}`);
   }, [decisions.location, decisions.mic]);
 
-  const { sdk, injectSpoof, mock, reset, vpnActive, lastMock, detMs, telemetry } = pipeline;
+  const { sdk, injectSpoof, mock, recoveryDemo, reset, recordNetwork, mockEnabled, toggleMockEnabled, detMs, telemetry, lastMock } = pipeline;
 
-  // Deterministic + advisory reasoning showcase. detMs is REAL (measured
-  // evaluate() time from the pipeline); advisory ms is the real elapsed time
-  // of the simulated advisory budget in showcase mode.
-  useEffect(() => {
-    if (!pipeline.verdict) {
-      setHybridReasoning(null);
-      setHybridTiming(null);
-      setHybridConf(null);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      const res = await hybridExplain(pipeline.verdict!, sdk);
-      if (cancelled) return;
-      const det = pipeline.detMs ?? 0;
-      setHybridReasoning(res.reasoning);
-      setHybridTiming({ deterministicMs: det, quantizedMs: res.quantizedMs, totalMs: det + res.quantizedMs });
-      setHybridCached(res.cached);
-      setHybridConf(null);
-    })();
-    return () => { cancelled = true; };
-  }, [pipeline.verdict, pipeline.detMs, sdk]);
+  // Real network-integrity signals (native VPN probe + IP↔GPS divergence).
+  const net = useNetworkIntelligence(
+    telemetry ? { latitude: telemetry.lat, longitude: telemetry.lon } : null,
+  );
 
   const onCommand = useCallback(
     (command: 'simulate spoof' | 'reset' | 'show reason') => {
@@ -101,6 +70,7 @@ export default function DashboardScreen() {
   const voice = useVoiceCommands(sdk as AnchorSDK, onCommand);
 
   const locationDenied = permsLoaded && (decisions.location === 'denied' || pipeline.locationGranted === false);
+  const noLiveGps = telemetry === null;
 
   const stateColor = pipeline.verdict ? colorForIntegrityState(pipeline.verdict.state) : colors.textMuted;
 
@@ -129,33 +99,63 @@ export default function DashboardScreen() {
     [sdk, pipeline.events],
   );
 
-  const lastExplanation = hybridReasoning ?? pipeline.events[0]?.explanation ?? null;
+  // Advisory text: the REAL on-device Qwen3 output once the model produces it;
+  // until then the deterministic machine's own reason (labeled in the panel).
+  const lastExplanation = pipeline.events[0]?.explanation ?? null;
+  const advisorySource: 'model' | 'deterministic' =
+    lastExplanation && lastExplanation !== '(explanation unavailable)' ? 'model' : 'deterministic';
 
-  if (locationDenied) {
-    return (
-      <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-        <LocationDenied />
-        <BottomBar
-          micDenied={decisions.mic === 'denied'}
-          voiceStatus={voice.status}
-          onToggleMic={voice.toggle}
-          lastTranscript={voice.lastTranscript}
-          lastError={voice.lastError}
-          onSearch={onSearch}
-          spoofing={pipeline.spoofing}
-          onSpoof={injectSpoof}
-          onReset={reset}
-          onShowReason={() => setReasonPanel(true)}
-        />
-      </SafeAreaView>
-    );
-  }
+  // Real network events into the flight recorder (VPN tunnel up/down, divergence).
+  const prevNetRef = useRef<{ vpn: boolean | null; diverged: boolean | null }>({ vpn: null, diverged: null });
+  useEffect(() => {
+    const diverged = net.divergenceKm !== null && net.divergenceKm > DIVERGENCE_LIMIT_KM;
+    if (net.vpnActive !== prevNetRef.current.vpn) {
+      recordNetwork(
+        net.vpnActive
+          ? `VPN tunnel detected (AnchorNet) — IP ${net.ip ? `${net.ip.ip}${net.ip.city ? ` · ${net.ip.city}, ${net.ip.country ?? ''}` : ''}` : 'resolving'}; GNSS integrity unaffected`
+          : 'VPN tunnel cleared — direct network path',
+      );
+      prevNetRef.current.vpn = net.vpnActive;
+    }
+    if (diverged !== prevNetRef.current.diverged) {
+      if (diverged) {
+        recordNetwork(
+          `IP↔GPS divergence ${Math.round(net.divergenceKm ?? 0)} km — network location untrusted, GNSS physics authoritative`,
+        );
+      }
+      prevNetRef.current.diverged = diverged;
+    }
+  }, [net.vpnActive, net.divergenceKm, net.ip, recordNetwork]);
+
+  // RECOVERY VERIFIED latch — derived from real machine transitions in the log:
+  // the newest TRUSTED entry immediately preceded by a RECOVERING entry.
+  const recoveryPair = useMemo(() => {
+    for (let i = 0; i < pipeline.events.length - 1; i += 1) {
+      if (pipeline.events[i].state === 'TRUSTED' && pipeline.events[i + 1].state === 'RECOVERING') {
+        return { recoveringAt: pipeline.events[i + 1].timestamp, trustedAt: pipeline.events[i].timestamp };
+      }
+    }
+    return null;
+  }, [pipeline.events]);
+
+  const netBannerVisible = net.vpnActive || (net.divergenceKm !== null && net.divergenceKm > DIVERGENCE_LIMIT_KM);
+
+  const insets = useSafeAreaInsets();
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+      {/* Dynamic-Island-style integrity capsule (iQOO 15) — real pipeline values */}
+      <IslandCapsule
+        verdict={pipeline.verdict}
+        detMs={detMs}
+        vpnActive={net.vpnActive}
+        divergenceKm={net.divergenceKm}
+        topInset={insets.top}
+      />
+
       <StatusStrip verdict={pipeline.verdict} />
 
-      {/* live telemetry rail — measured values, 1 Hz */}
+      {/* live telemetry rail — measured values at 1 Hz */}
       {telemetry ? (
         <View style={styles.telemetryRail}>
           <View style={styles.telemetryRow}>
@@ -164,9 +164,11 @@ export default function DashboardScreen() {
               {Math.abs(telemetry.lat).toFixed(4)}°{telemetry.lat >= 0 ? 'N' : 'S'} {Math.abs(telemetry.lon).toFixed(4)}°{telemetry.lon >= 0 ? 'E' : 'W'}
             </Text>
             <Text style={styles.telLabel}>ALT</Text>
-            <Text style={styles.telVal}>{telemetry.alt.toFixed(1)}m</Text>
+            <Text style={styles.telVal}>{Number.isFinite(telemetry.alt) ? `${telemetry.alt.toFixed(1)}m` : '—'}</Text>
             <Text style={styles.telLabel}>ACC</Text>
-            <Text style={[styles.telVal, telemetry.acc > 25 ? styles.telWarn : null]}>{Number.isFinite(telemetry.acc) ? `${telemetry.acc.toFixed(1)}m` : '—'}</Text>
+            <Text style={[styles.telVal, telemetry.acc > 25 ? styles.telWarn : null]}>
+              {Number.isFinite(telemetry.acc) ? `${telemetry.acc.toFixed(1)}m` : '—'}
+            </Text>
           </View>
           <View style={styles.telemetryRow}>
             <Text style={styles.telLabel}>SPD</Text>
@@ -174,21 +176,82 @@ export default function DashboardScreen() {
             <Text style={styles.telLabel}>TRK</Text>
             <Text style={styles.telVal}>{telemetry.bearing.toFixed(0)}°</Text>
             <Text style={styles.telLabel}>SAT</Text>
-            <Text style={[styles.telVal, telemetry.sats !== null && telemetry.sats < 4 ? styles.telWarn : null]}>{telemetry.sats ?? '—'}</Text>
+            <Text style={[styles.telVal, telemetry.sats !== null && telemetry.sats < 4 ? styles.telWarn : null]}>
+              {telemetry.sats ?? '—'}
+            </Text>
             <Text style={styles.telLabel}>BARO</Text>
             <Text style={styles.telVal}>{telemetry.baroHpa !== null ? `${telemetry.baroHpa.toFixed(1)}hPa` : '—'}</Text>
+          </View>
+          <View style={styles.telemetryRow}>
+            <Text style={styles.telLabel}>SENSORS</Text>
+            <Text style={styles.telVal}>
+              <Text style={pipeline.locationError ? styles.telFail : styles.telOk}>GPS{pipeline.locationError ? '✗' : '✓'}</Text>
+              {' · '}
+              <Text style={pipeline.imuError ? styles.telFail : styles.telOk}>IMU{pipeline.imuError ? '✗' : '✓'}</Text>
+              <Text style={styles.telMuted}>({telemetry.imuCount})</Text>
+              {' · '}
+              <Text style={pipeline.baroError ? styles.telFail : styles.telOk}>BARO{pipeline.baroError ? '✗' : '✓'}</Text>
+              <Text style={styles.telMuted}>({telemetry.baroCount})</Text>
+              {' · '}
+              <Text style={pipeline.gnssSupported === false ? styles.telMuted : pipeline.gnssError ? styles.telFail : styles.telOk}>
+                GNSS{pipeline.gnssSupported === false ? 'N/A' : pipeline.gnssError ? '✗' : '✓'}
+              </Text>
+              <Text style={styles.telMuted}>({telemetry.gnssEpochs})</Text>
+            </Text>
+            <Text style={styles.telLabel}>FIX AGE</Text>
+            <Text style={[styles.telVal, telemetry.fixAgeMs !== null && telemetry.fixAgeMs > 5000 ? styles.telWarn : null]}>
+              {telemetry.fixAgeMs !== null ? `${(telemetry.fixAgeMs / 1000).toFixed(0)}s` : '—'}
+            </Text>
           </View>
         </View>
       ) : null}
 
-      {vpnActive ? (
-        <View style={styles.vpnBanner}>
-          <Text style={styles.vpnTitle}>VPN DETECTED — IP ≠ GPS</Text>
-          <Text style={styles.vpnBody}>IP geolocation jumped (VPN/proxy), but GPS physics checks all pass. Correctly NOT flagged — VPN does not spoof GNSS. GPS remains trusted.</Text>
+      {/* REAL network-integrity banner — native VPN probe + IP↔GPS divergence */}
+      {netBannerVisible ? (
+        <View style={[styles.netBanner, !net.vpnActive && styles.netBannerWarn]}>
+          <Text style={[styles.netTitle, net.vpnActive && styles.netTitleOk]}>
+            {net.vpnActive ? 'VPN TUNNEL ACTIVE — OS-REPORTED' : 'IP↔GPS DIVERGENCE'}
+          </Text>
+          <Text style={styles.netBody}>
+            {net.vpnActive
+              ? `Tunnel interface detected by AnchorNet. IP ${net.ip ? `${net.ip.ip}${net.ip.city ? ` · ${net.ip.city}, ${net.ip.country ?? ''}` : ''}` : net.checking ? 'resolving…' : 'unavailable'}. `
+              : 'Network location does not match the GNSS fix. '}
+            {net.divergenceKm !== null ? `IP↔GPS ${net.divergenceKm >= 1000 ? `${(net.divergenceKm / 1000).toFixed(1)}k` : Math.round(net.divergenceKm)} km. ` : ''}
+            Network location is untrusted; GNSS physics remain authoritative.
+          </Text>
         </View>
       ) : null}
 
-      {/* six PFD tape gauges — realtime physics, 500ms eased, 0-100 */}
+      {/* no-live-GPS banner — instrument still runs (harness or real recovery) */}
+      {locationDenied || noLiveGps ? (
+        <View style={styles.noFixBanner}>
+          <Text style={styles.netTitle}>
+            {locationDenied ? 'NO LIVE GPS — PERMISSION DENIED' : 'NO LIVE GPS — WAITING FOR FIX'}
+          </Text>
+          <Text style={styles.netBody}>
+            {locationDenied
+              ? 'Grant location in system settings, or arm the presentation injector below to drive the real pipeline.'
+              : 'Testing indoors or GNSS not locked? Arm the presentation injector below to stage attacks through the real pipeline.'}
+          </Text>
+          {locationDenied ? (
+            <Pressable style={styles.openSettingsBtn} onPress={() => void Linking.openSettings()}>
+              <Text style={styles.openSettingsText}>OPEN SETTINGS</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* RECOVERY VERIFIED — derived from real machine transitions in the log */}
+      {recoveryPair ? (
+        <View style={styles.recoveryNote}>
+          <Text style={styles.recoveryTitle}>RECOVERY VERIFIED — DEBOUNCE 5/5 CLEAN EVALUATIONS</Text>
+          <Text style={styles.recoveryBody}>
+            RECOVERING @{formatClock(recoveryPair.recoveringAt)} → TRUSTED @{formatClock(recoveryPair.trustedAt)} · real state-machine transition, recorded by the flight recorder
+          </Text>
+        </View>
+      ) : null}
+
+      {/* six PFD tape gauges — realtime physics */}
       <View style={styles.gaugesWrap}>
         <View style={styles.gaugeRow}>
           {CHECK_ORDER.slice(0, 3).map((id) => {
@@ -223,44 +286,69 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      <HybridPanel
+      <IntegrityPanel
         verdict={pipeline.verdict}
-        reasoning={hybridReasoning}
-        timing={hybridTiming}
-        cached={hybridCached}
-        hybridConfidence={hybridConf}
+        reasoning={advisorySource === 'model' ? lastExplanation : pipeline.verdict?.reason ?? null}
+        advisorySource={advisorySource}
+        detMs={detMs}
       />
 
-      {/* Scenario injector — every frame runs through the REAL RAIM/FDE pipeline */}
+      {/* TEST HARNESS — disarmed by default; armed frames run the REAL pipeline */}
       <View style={styles.mockPanel}>
         <View style={styles.mockHeader}>
-          <Text style={styles.mockTitle}>SCENARIO INJECTOR — REAL PHYSICS</Text>
-          <Text style={styles.mockHint}>1 frame/s through full pipeline</Text>
+          <Text style={styles.mockTitle}>TEST HARNESS — ATTACK STAGING</Text>
+          <View style={styles.armRow}>
+            <Text style={[styles.armLabel, mockEnabled && styles.armLabelOn]}>
+              {mockEnabled ? 'ARMED' : 'LIVE SENSORS ONLY'}
+            </Text>
+            <Switch
+              value={mockEnabled}
+              onValueChange={toggleMockEnabled}
+              trackColor={{ false: colors.chrome, true: colors.trusted }}
+              thumbColor="#E8EDF2"
+            />
+          </View>
         </View>
-        <View style={styles.mockGrid}>
+        <Text style={styles.mockHint}>
+          {mockEnabled
+            ? 'Frames enter the same evaluate() path as live GPS — every gauge and state change is real physics.'
+            : 'Disabled: all values are live sensors. Arm only to stage attacks that cannot be performed live.'}
+        </Text>
+        <View style={[styles.mockGrid, !mockEnabled && styles.mockGridDisabled]}>
           {[
-            { k: 'vpn' as const, label: 'VPN', desc: 'IP jump' },
-            { k: 'teleport' as const, label: 'TELEPORT', desc: 'kinematic' },
-            { k: 'cno' as const, label: 'C/N0', desc: 'lockstep' },
-            { k: 'altitude' as const, label: 'ALT', desc: 'baro vs GPS' },
-            { k: 'heading' as const, label: 'HDG', desc: 'track vs mag' },
-            { k: 'temporal' as const, label: 'TIME', desc: 'replay' },
-            { k: 'environmental' as const, label: 'ENV', desc: 'bounds' },
-            { k: 'compound' as const, label: 'COMPOUND', desc: 'krit pair' },
-          ].map((m) => (
-            <Pressable
-              key={m.k}
-              onPress={() => mock(m.k)}
-              style={[styles.mockBtn, lastMock === m.k && styles.mockBtnActive, vpnActive && m.k === 'vpn' && styles.mockBtnVpn]}
-              accessibilityRole="button"
-              accessibilityLabel={`Mock ${m.label}`}
-            >
-              <Text style={[styles.mockBtnLabel, lastMock === m.k && styles.mockBtnLabelActive]}>{m.label}</Text>
-              <Text style={styles.mockBtnDesc}>{m.desc}</Text>
-            </Pressable>
-          ))}
+            { k: 'teleport' as const, label: 'TELEPORT', desc: 'kinematic → DEGRADED' },
+            { k: 'attack' as const, label: 'ATTACK', desc: 'kin+cn0 → DENIED' },
+            { k: 'cno' as const, label: 'C/N0', desc: 'lockstep → DEGRADED' },
+            { k: 'altitude' as const, label: 'ALT', desc: 'baro Δ → DEGRADED' },
+            { k: 'heading' as const, label: 'HDG', desc: 'track Δ → DEGRADED' },
+            { k: 'temporal' as const, label: 'TIME', desc: 'replay → DEGRADED' },
+            { k: 'environmental' as const, label: 'ENV', desc: 'bounds → DEGRADED' },
+          ].map((m) => {
+            const kind = m.k === 'attack' ? 'compound' : m.k;
+            return (
+              <Pressable
+                key={m.k}
+                onPress={() => mock(kind)}
+                disabled={!mockEnabled}
+                style={[styles.mockBtn, lastMock === kind && mockEnabled && styles.mockBtnActive]}
+                accessibilityRole="button"
+                accessibilityLabel={`Stage ${m.label}`}
+              >
+                <Text style={styles.mockBtnLabel}>{m.label}</Text>
+                <Text style={styles.mockBtnDesc}>{m.desc}</Text>
+              </Pressable>
+            );
+          })}
         </View>
-        <Text style={styles.mockFoot}>Frames enter the same evaluate() path as live GPS — gauges and status react to measured physics. VPN keeps GPS TRUSTED (IP ≠ GNSS).</Text>
+        <Pressable
+          onPress={recoveryDemo}
+          disabled={!mockEnabled}
+          style={[styles.recoveryBtn, !mockEnabled && styles.mockGridDisabled]}
+          accessibilityRole="button"
+          accessibilityLabel="Run recovery demonstration"
+        >
+          <Text style={styles.recoveryBtnText}>RECOVERY PATH — DENIED → RECOVERING → TRUSTED</Text>
+        </Pressable>
       </View>
 
       <EventLog events={pipeline.events} />
@@ -276,16 +364,19 @@ export default function DashboardScreen() {
         onSpoof={injectSpoof}
         onReset={reset}
         onShowReason={() => setReasonPanel(true)}
+        spoofDisabled={!mockEnabled}
       />
 
-      {/* SHOW REASON panel — last LLM explanation inline */}
+      {/* SHOW REASON panel — last model explanation inline */}
       {reasonPanel ? (
         <Pressable style={styles.overlayScrim} onPress={() => setReasonPanel(false)}>
           <Pressable style={styles.overlayPanel} onPress={() => {}}>
-            <Text style={styles.overlayTitle}>LAST REASON — AI EXPLANATION</Text>
+            <Text style={styles.overlayTitle}>LAST REASON — ADVISORY</Text>
             <ScrollView style={styles.overlayScroll} keyboardShouldPersistTaps="handled">
               <Text style={styles.overlayBody}>
-                {lastExplanation ?? '(waiting for on-device model — explanation appears after the next transition)'}
+                {lastExplanation && lastExplanation !== '(explanation unavailable)'
+                  ? lastExplanation
+                  : pipeline.verdict?.reason ?? 'No transition recorded yet.'}
               </Text>
             </ScrollView>
             <Pressable onPress={() => setReasonPanel(false)}>
@@ -303,8 +394,7 @@ export default function DashboardScreen() {
             <ScrollView style={styles.overlayScroll} keyboardShouldPersistTaps="handled">
               {searchOverlay.hits.length === 0 ? (
                 <Text style={styles.overlayBody}>
-                  No embedded events yet (embeddings index after the first transition) or no
-                  matches.
+                  No embedded events yet (embeddings index after the first transition) or no matches.
                 </Text>
               ) : (
                 searchOverlay.hits.map(({ entry, score }) => (
@@ -361,7 +451,16 @@ const styles = StyleSheet.create({
   telWarn: {
     color: colors.caution,
   },
-  vpnBanner: {
+  telOk: {
+    color: colors.trusted,
+  },
+  telFail: {
+    color: colors.denied,
+  },
+  telMuted: {
+    color: colors.textMuted,
+  },
+  netBanner: {
     backgroundColor: 'rgba(0,217,163,0.08)',
     borderTopWidth: hairline,
     borderBottomWidth: hairline,
@@ -370,87 +469,68 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     gap: 2,
   },
-  vpnTitle: {
+  netBannerWarn: {
+    backgroundColor: 'rgba(255,179,0,0.08)',
+    borderColor: colors.caution,
+  },
+  netTitle: {
     ...monoNumericBold,
     fontSize: 11,
     letterSpacing: 2,
+    color: colors.caution,
+  },
+  netTitleOk: {
     color: colors.trusted,
   },
-  vpnBody: {
+  netBody: {
     fontFamily: fonts.sans,
     fontSize: 11,
     lineHeight: 15,
     color: colors.textPrimary,
   },
-  mockPanel: {
-    backgroundColor: colors.panelBg,
+  noFixBanner: {
+    backgroundColor: 'rgba(255,179,0,0.08)',
     borderTopWidth: hairline,
-    borderTopColor: colors.chrome,
-    paddingHorizontal: spacing.md,
+    borderBottomWidth: hairline,
+    borderColor: colors.caution,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
-  mockHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    flexWrap: 'wrap',
-    gap: 4,
+  openSettingsBtn: {
+    borderWidth: hairline,
+    borderColor: colors.caution,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    marginTop: spacing.xs,
   },
-  mockTitle: {
+  openSettingsText: {
+    ...monoNumericBold,
+    fontSize: 11,
+    letterSpacing: 2,
+    color: colors.caution,
+  },
+  recoveryNote: {
+    backgroundColor: 'rgba(0,217,163,0.08)',
+    borderTopWidth: hairline,
+    borderBottomWidth: hairline,
+    borderColor: colors.trusted,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    gap: 2,
+  },
+  recoveryTitle: {
     ...monoNumericBold,
     fontSize: 10,
     letterSpacing: 1.5,
+    color: colors.trusted,
+  },
+  recoveryBody: {
+    ...monoNumeric,
+    fontSize: 9,
+    lineHeight: 13,
     color: colors.textPrimary,
-  },
-  mockHint: {
-    ...monoNumeric,
-    fontSize: 8,
-    color: colors.textMuted,
-  },
-  mockGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  mockBtn: {
-    width: '23%',
-    minWidth: 72,
-    borderWidth: hairline,
-    borderColor: colors.chrome,
-    backgroundColor: colors.panelSurface,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    alignItems: 'center',
-    gap: 1,
-  },
-  mockBtnActive: {
-    borderColor: colors.caution,
-    backgroundColor: 'rgba(255,179,0,0.08)',
-  },
-  mockBtnVpn: {
-    borderColor: colors.trusted,
-    backgroundColor: 'rgba(0,217,163,0.08)',
-  },
-  mockBtnLabel: {
-    ...monoNumericBold,
-    fontSize: 10,
-    letterSpacing: 1,
-    color: colors.textPrimary,
-  },
-  mockBtnLabelActive: {
-    color: colors.caution,
-  },
-  mockBtnDesc: {
-    ...monoNumeric,
-    fontSize: 7,
-    letterSpacing: 0.5,
-    color: colors.textMuted,
-  },
-  mockFoot: {
-    ...monoNumeric,
-    fontSize: 8,
-    color: colors.textMuted,
   },
   gaugesWrap: {
     paddingVertical: spacing.sm,
@@ -468,36 +548,93 @@ const styles = StyleSheet.create({
     backgroundColor: colors.chrome,
     marginVertical: spacing.sm,
   },
-  deniedWrap: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: spacing.xl,
-    gap: spacing.lg,
+  mockPanel: {
+    backgroundColor: colors.panelBg,
+    borderTopWidth: hairline,
+    borderTopColor: colors.chrome,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
   },
-  deniedTitle: {
+  mockHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  mockTitle: {
     ...monoNumericBold,
-    fontSize: 18,
-    letterSpacing: 3,
-    color: colors.caution,
-  },
-  deniedBody: {
-    fontFamily: fonts.sans,
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 10,
+    letterSpacing: 1.5,
     color: colors.textPrimary,
   },
-  deniedBtn: {
-    height: 48,
+  armRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  armLabel: {
+    ...monoNumericBold,
+    fontSize: 9,
+    letterSpacing: 1.5,
+    color: colors.textMuted,
+  },
+  armLabelOn: {
+    color: colors.trusted,
+  },
+  mockHint: {
+    ...monoNumeric,
+    fontSize: 8,
+    lineHeight: 12,
+    color: colors.textMuted,
+  },
+  mockGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  mockGridDisabled: {
+    opacity: 0.4,
+  },
+  mockBtn: {
+    width: '23%',
+    minWidth: 72,
+    borderWidth: hairline,
+    borderColor: colors.chrome,
+    backgroundColor: colors.panelSurface,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    gap: 1,
+  },
+  mockBtnActive: {
+    borderColor: colors.caution,
+    backgroundColor: 'rgba(255,179,0,0.08)',
+  },
+  mockBtnLabel: {
+    ...monoNumericBold,
+    fontSize: 10,
+    letterSpacing: 1,
+    color: colors.textPrimary,
+  },
+  mockBtnDesc: {
+    ...monoNumeric,
+    fontSize: 7,
+    letterSpacing: 0.5,
+    color: colors.textMuted,
+  },
+  recoveryBtn: {
+    borderWidth: hairline,
+    borderColor: colors.trusted,
+    backgroundColor: colors.panelSurface,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: hairline,
-    borderColor: colors.caution,
+    paddingVertical: 8,
   },
-  deniedBtnText: {
+  recoveryBtnText: {
     ...monoNumericBold,
-    fontSize: 13,
-    letterSpacing: 3,
-    color: colors.caution,
+    fontSize: 10,
+    letterSpacing: 1.5,
+    color: colors.trusted,
   },
   overlayScrim: {
     position: 'absolute',

@@ -19,18 +19,32 @@ export interface BottomBarProps {
   onSpoof: () => void;
   onReset: () => void;
   onShowReason: () => void;
+  /** True when the test harness is disarmed — SIMULATE SPOOF becomes inert. */
+  spoofDisabled?: boolean;
 }
 
-function HarnessButton({ label, onPress, active }: { label: string; onPress: () => void; active?: boolean }) {
+function HarnessButton({
+  label,
+  onPress,
+  active,
+  disabled,
+}: {
+  label: string;
+  onPress: () => void;
+  active?: boolean;
+  disabled?: boolean;
+}) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ selected: !!active }}
+      accessibilityState={{ selected: !!active, disabled: !!disabled }}
       style={({ pressed }) => [
         styles.harnessBtn,
         active && styles.harnessBtnActive,
+        disabled && styles.harnessBtnDisabled,
         pressed && styles.harnessBtnPressed,
       ]}
     >
@@ -50,6 +64,7 @@ export function BottomBar({
   onSpoof,
   onReset,
   onShowReason,
+  spoofDisabled,
 }: BottomBarProps) {
   const [query, setQuery] = useState('');
   const recording = voiceStatus === 'recording';
@@ -81,7 +96,7 @@ export function BottomBar({
       {/* TEST HARNESS — labeled debug controls */}
       <View style={styles.harnessRow}>
         <Text style={styles.harnessLabel}>TEST HARNESS</Text>
-        <HarnessButton label="SIMULATE SPOOF" onPress={onSpoof} active={spoofing} />
+        <HarnessButton label="SIMULATE SPOOF" onPress={onSpoof} active={spoofing} disabled={spoofDisabled} />
         <HarnessButton label="RESET" onPress={onReset} />
         <HarnessButton label="SHOW REASON" onPress={onShowReason} />
       </View>
@@ -158,6 +173,9 @@ const styles = StyleSheet.create({
   },
   harnessBtnActive: {
     backgroundColor: colors.caution,
+  },
+  harnessBtnDisabled: {
+    opacity: 0.4,
   },
   harnessBtnPressed: {
     opacity: 0.7,

@@ -79,6 +79,14 @@ jest.mock('anchor-sdk/src/gnss/AnchorGnssModule', () => ({
   },
 }));
 
+// The native AnchorNet binding throws requireNativeModule in Jest.
+jest.mock('anchor-sdk/src/gnss/AnchorNetModule', () => ({
+  __esModule: true,
+  default: {
+    isVpnActive: () => false,
+  },
+}));
+
 jest.mock('anchor-sdk', () => {
   const actual = jest.requireActual('anchor-sdk') as Record<string, unknown>;
   return {

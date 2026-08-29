@@ -17,6 +17,9 @@ export {
   type AnchorGnssStatusEvent,
 } from './gnss/AnchorGnssModule';
 
+// Network-integrity signals (real OS-level VPN detection).
+export { default as AnchorNet } from './gnss/AnchorNetModule';
+
 // Sensor hooks and their pure helpers.
 export { useLocationStream } from './sensors/useLocationStream';
 export { locationToFix } from './sensors/fixMapping';
