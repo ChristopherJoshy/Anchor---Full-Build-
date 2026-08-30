@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import * as Location from 'expo-location';
 import { locationToFix } from './fixMapping';
 import type { Fix } from '../types';
@@ -32,7 +33,7 @@ export function useLocationStream(): LocationStream {
     let cancelled = false;
     let subscription: Location.LocationSubscription | null = null;
 
-    (async () => {
+    const start = async (): Promise<void> => {
       const permission = await Location.getForegroundPermissionsAsync();
       if (cancelled) return;
       setGranted(permission.granted);
@@ -62,12 +63,22 @@ export function useLocationStream(): LocationStream {
           setError(watchError || 'Unknown location error.');
         },
       );
-    })().catch((e: unknown) => {
-      if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+    };
+
+    // Re-sample permission/services whenever the app returns to foreground:
+    // a user granting in system settings and returning must resume the
+    // stream without an app restart.
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      if (subscription) return; // already streaming
+      void start();
     });
+
+    void start();
 
     return () => {
       cancelled = true;
+      appStateSubscription.remove();
       subscription?.remove();
     };
   }, []);
