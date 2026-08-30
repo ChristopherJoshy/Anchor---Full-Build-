@@ -24,7 +24,11 @@
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
     },
     "web": {
@@ -55,9 +59,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "98219ae4-65d4-41dc-a22d-03bee5050a3f"
+        "projectId": "0dc6739c-4d27-4709-9693-13d29dba3de2"
       }
     },
-    "owner": "iamchris2005"
+    "owner": "iamchrisqltfreeonly"
   }
 }
