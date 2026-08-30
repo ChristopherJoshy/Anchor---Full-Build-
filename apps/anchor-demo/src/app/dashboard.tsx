@@ -36,7 +36,7 @@ import type { AnchorSDK, CheckId, CheckResult } from 'anchor-sdk';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-const CHECK_ORDER: CheckId[] = ['kinematic', 'heading', 'temporal', 'altitude', 'environmental', 'cn0'];
+const CHECK_ORDER: CheckId[] = ['kinematic', 'heading', 'temporal', 'altitude', 'environmental', 'cn0', 'network'];
 
 interface SearchOverlayData {
   query: string;
@@ -110,14 +110,21 @@ export default function DashboardScreen() {
   const voice = useVoiceCommands(sdk as AnchorSDK, onCommand);
 
   const locationDenied = permsLoaded && decisions.location === 'denied';
-  const noLiveGps = telemetry === null && !locationDenied;
-
-  const stateColor = pipeline.verdict ? colorForIntegrityState(pipeline.verdict.state) : colors.textMuted;
+  const locationErrorActive = !!pipeline.locationError && permsLoaded && decisions.location === 'granted';
+  const noLiveGps = telemetry === null && !locationDenied && !locationErrorActive;
+  // Wall-clock staleness: 5s without a new GPS timestamp (not fixAgeMs which is huge for old fixtures)
+  const gpsStale =
+    pipeline.lastFixWallMs !== null && Date.now() - pipeline.lastFixWallMs > 5000 && telemetry !== null;
+  // When GPS is stale for >7.5s, the pipeline will purge to STANDBY; while stale (5-7.5s) show HOLD gauges so they don't look live
+  const gaugesStale = gpsStale || telemetry === null;
+  // Slow recovery: while GPS stale, force STANDBY display (not TRUSTED with old data) — pipeline will also purge after 7.5s
+  const displayVerdict = gpsStale ? null : pipeline.verdict;
+  const displayStateColor = displayVerdict ? colorForIntegrityState(displayVerdict.state) : colors.textMuted;
 
   const resultFor = useCallback(
     (id: CheckId): CheckResult | null =>
-      pipeline.verdict?.results.find((r) => r.id === id) ?? null,
-    [pipeline.verdict],
+      displayVerdict?.results.find((r) => r.id === id) ?? null,
+    [displayVerdict],
   );
 
   const onSearch = useCallback(
@@ -189,7 +196,7 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      <StatusStrip verdict={pipeline.verdict} />
+      <StatusStrip verdict={displayVerdict} />
       <ModelStatus />
 
       <ScrollView
@@ -197,22 +204,41 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {/* NO LIVE GPS / permission banners */}
-        {locationDenied || noLiveGps ? (
-          <View style={styles.banner}>
+        {/* NO LIVE GPS / permission / stale banners — real sensor state, never mocked */}
+        {locationDenied || locationErrorActive || noLiveGps || gpsStale ? (
+          <View style={[styles.banner, locationErrorActive || gpsStale ? styles.bannerVpn : null]}>
             <Text style={styles.bannerTitle}>
-              {locationDenied ? 'NO LIVE GPS — PERMISSION DENIED' : 'NO LIVE GPS — WAITING FOR FIX'}
+              {locationDenied
+                ? 'NO LIVE GPS — PERMISSION DENIED'
+                : locationErrorActive
+                ? 'NO LIVE GPS — LOCATION SERVICES OFF'
+                : gpsStale
+                ? `GPS SIGNAL LOST — FIX STALE ${telemetry?.fixAgeMs ? Math.round(telemetry.fixAgeMs / 1000) : '?'}s`
+                : 'NO LIVE GPS — WAITING FOR FIX'}
             </Text>
             <Text style={styles.bannerBody}>
               {locationDenied
                 ? 'The instrument needs location permission to stream fixes.'
+                : locationErrorActive
+                ? pipeline.locationError ?? 'Location services disabled — enable GPS to stream fixes.'
+                : gpsStale
+                ? 'No new GNSS fix for 7s — instrument to STANDBY until signal returns. Telemetry and gauges frozen at last fix.'
                 : 'Waiting for the first GNSS fix — all checks idle until then.'}
             </Text>
-            {locationDenied ? (
+            {(locationDenied || locationErrorActive) ? (
               <Pressable style={styles.openSettingsBtn} onPress={() => void Linking.openSettings()}>
                 <Text style={styles.openSettingsText}>OPEN SETTINGS</Text>
               </Pressable>
             ) : null}
+          </View>
+        ) : null}
+        {/* VPN ACTIVE — LOCATION UNTRUSTED — top-level, always visible when tunnel up */}
+        {net.vpnActive ? (
+          <View style={[styles.banner, styles.bannerVpn]}>
+            <Text style={[styles.bannerTitle, { color: colors.denied }]}>VPN ACTIVE — LOCATION UNTRUSTED</Text>
+            <Text style={styles.bannerBody}>
+              VPN tunnel re-terminates network location — the network check FAILS so the instrument cannot hold TRUSTED. GNSS remains authoritative, but overall integrity is DEGRADED until VPN clears and the 3-clean debounce elapses.
+            </Text>
           </View>
         ) : null}
 
@@ -269,20 +295,21 @@ export default function DashboardScreen() {
           </View>
         ) : null}
 
-        {/* CHECKS */}
+        {/* CHECKS — all 7 checks including network: VPN active → network gauge 0, dynamic */}
         <View>
-          <SectionHeader title="CHECKS" meta="6 PHYSICS • SCORE 0-100" />
+          <SectionHeader title="CHECKS" meta="7 CHECKS • SCORE 0-100" />
           <View style={styles.panel}>
             <View style={styles.gaugeRow}>
-              {CHECK_ORDER.slice(0, 3).map((id) => {
+              {CHECK_ORDER.slice(0, 4).map((id) => {
                 const r = resultFor(id);
                 return (
                   <View key={id} style={styles.gaugeCell}>
                     <TapeGauge
                       checkId={id}
-                      score={r ? r.score : null}
+                      score={gaugesStale ? null : r ? r.score : null}
                       passed={r?.passed ?? true}
-                      stateColor={stateColor}
+                      stateColor={displayStateColor}
+                      detail={gaugesStale ? 'stale — no new fix' : r?.detail ?? null}
                     />
                   </View>
                 );
@@ -290,15 +317,16 @@ export default function DashboardScreen() {
             </View>
             <View style={styles.gaugeDivider} />
             <View style={styles.gaugeRow}>
-              {CHECK_ORDER.slice(3).map((id) => {
+              {CHECK_ORDER.slice(4).map((id) => {
                 const r = resultFor(id);
                 return (
                   <View key={id} style={styles.gaugeCell}>
                     <TapeGauge
                       checkId={id}
-                      score={r ? r.score : null}
+                      score={gaugesStale ? null : r ? r.score : null}
                       passed={r?.passed ?? true}
-                      stateColor={stateColor}
+                      stateColor={displayStateColor}
+                      detail={gaugesStale ? 'stale — no new fix' : r?.detail ?? null}
                     />
                   </View>
                 );
@@ -352,8 +380,8 @@ export default function DashboardScreen() {
         <View>
           <SectionHeader title="INTEGRITY" meta="RAIM/FDE" />
           <IntegrityPanel
-            verdict={pipeline.verdict}
-            reasoning={advisorySource === 'model' ? lastExplanation : pipeline.verdict?.reason ?? null}
+            verdict={displayVerdict}
+            reasoning={advisorySource === 'model' ? lastExplanation : displayVerdict?.reason ?? null}
             advisorySource={advisorySource}
             detMs={detMs}
           />
@@ -362,7 +390,7 @@ export default function DashboardScreen() {
         {/* RECOVERY VERIFIED — derived from real machine transitions in the log */}
         {recoveryPair ? (
           <View style={styles.recoveryNote}>
-            <Text style={styles.recoveryTitle}>RECOVERY VERIFIED — DEBOUNCE 5/5 CLEAN EVALUATIONS</Text>
+            <Text style={styles.recoveryTitle}>RECOVERY VERIFIED — DEBOUNCE 3/3 CLEAN EVALUATIONS</Text>
             <Text style={styles.recoveryBody}>
               RECOVERING @{formatClock(recoveryPair.recoveringAt)} → TRUSTED @{formatClock(recoveryPair.trustedAt)} · real state-machine transition, recorded by the flight recorder
             </Text>
@@ -451,7 +479,7 @@ export default function DashboardScreen() {
         onSpoof={injectSpoof}
         onReset={reset}
         onShowReason={() => setReasonPanel(true)}
-        spoofDisabled={!demoArmed}
+        spoofDisabled={false}
       />
 
       {/* SHOW REASON panel — last model explanation inline */}
@@ -463,7 +491,7 @@ export default function DashboardScreen() {
               <Text style={styles.overlayBody}>
                 {lastExplanation && lastExplanation !== '(explanation unavailable)'
                   ? lastExplanation
-                  : pipeline.verdict?.reason ?? 'No transition recorded yet.'}
+                  : displayVerdict?.reason ?? 'No transition recorded yet.'}
               </Text>
             </ScrollView>
             <Pressable onPress={() => setReasonPanel(false)}>

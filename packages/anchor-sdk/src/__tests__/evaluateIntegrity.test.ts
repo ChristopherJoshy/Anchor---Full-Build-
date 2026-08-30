@@ -71,7 +71,7 @@ describe('evaluateIntegrity (stateless contract function)', () => {
   it('never throws and degrades on malformed windows', () => {
     const verdict = evaluateIntegrity({ fixes: [], imu: [], baro: [], gnss: [] });
     expect(verdict.state).toBe('TRUSTED');
-    expect(verdict.confidence).toBe(1);
+    expect(verdict.confidence).toBeCloseTo(1, 10);
   });
 });
 

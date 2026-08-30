@@ -29,6 +29,9 @@ export const WINDOW_IMU_CAP = 60;
 export const WINDOW_BARO_CAP = 60;
 export const WINDOW_GNSS_CAP = 12;
 
+/** Fix considered stale after this many ms without a new GPS fix — pipeline goes to STANDBY. */
+export const GPS_STALE_MS = 7500;
+
 /** Attack-scenario kinds for the armed TEST HARNESS (presentation stimulus only). */
 export type ScenarioKind =
   | 'teleport'
@@ -191,6 +194,7 @@ export function useAnchorPipeline() {
   const [demoArmed, setDemoArmed] = useState(false);
   const [detMs, setDetMs] = useState<number | null>(null);
   const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
+  const [lastFixWallMs, setLastFixWallMs] = useState<number | null>(null);
 
   const fixesRef = useRef<Fix[]>([]);
   const imuRef = useRef<ImuSample[]>([]);
@@ -200,6 +204,7 @@ export function useAnchorPipeline() {
   const eventIdRef = useRef(0);
   const generationRef = useRef(0);
   const lastFixTsRef = useRef<number | null>(null);
+  const lastFixWallMsRef = useRef<number | null>(null);
   const lastImuTsRef = useRef<number | null>(null);
   const lastBaroTsRef = useRef<number | null>(null);
   const lastGnssTsRef = useRef<number | null>(null);
@@ -334,7 +339,49 @@ export function useAnchorPipeline() {
       spoofGnssRef.current = rest;
       gnssRef.current = pushCapped(gnssRef.current, spoofEpoch, WINDOW_GNSS_CAP);
     }
-    if (fixesRef.current.length === 0) return;
+    // GPS signal lost: no new fix for GPS_STALE_MS — purge to STANDBY so the UI
+    // never shows a stale TRUSTED with old coordinates. Real sensor loss, no mock.
+    // Uses wall-clock of last received fix, not GPS timestamp (fixtures may be old).
+    if (lastFixWallMsRef.current !== null && Date.now() - lastFixWallMsRef.current > GPS_STALE_MS) {
+      if (fixesRef.current.length > 0 || verdict !== null) {
+        fixesRef.current = [];
+        lastFixTsRef.current = null;
+        lastFixWallMsRef.current = null;
+        setLastFixWallMs(null);
+        // Keep IMU/BARO/GNSS for next fix but clear telemetry/verdict instantly
+        lastStateRef.current = null;
+        setVerdict(null);
+        setTelemetry(null);
+        setDetMs(null);
+        spoofFixesRef.current = [];
+        spoofGnssRef.current = [];
+        setSpoofing(false);
+        setEvents((prev) => {
+          const id = (eventIdRef.current += 1);
+          const entry: EventLogEntry = {
+            id,
+            timestamp: Date.now(),
+            state: 'NETWORK',
+            reason: 'GPS signal lost — no fix for 7.5s, instrument to STANDBY',
+            failedChecks: [],
+            explanation: null,
+            embedding: null,
+          };
+          return [entry, ...prev];
+        });
+      }
+      return;
+    }
+    if (fixesRef.current.length === 0) {
+      setTelemetry(null);
+      // If we had a verdict, clear it — stale window should not keep TRUSTED
+      if (verdict !== null) {
+        lastStateRef.current = null;
+        setVerdict(null);
+        setDetMs(null);
+      }
+      return;
+    }
 
     const { result: v, ms } = measureDeterministic(() =>
       sdk.evaluate({
@@ -375,14 +422,20 @@ export function useAnchorPipeline() {
       recordTransition(v);
       hapticForState(v.state);
     }
-  }, [sdk, recordTransition, hapticForState]);
+  }, [sdk, recordTransition, hapticForState, verdict]);
 
   // Immediate path: evaluate as soon as a NEW fix lands (live GPS at 1 Hz).
   useEffect(() => {
     if (!location.fix) return;
     locationFixRef.current = location.fix;
     if (lastFixTsRef.current === null || location.fix.timestamp !== lastFixTsRef.current) {
+      const now = Date.now();
+      lastFixWallMsRef.current = now;
+      setLastFixWallMs(now);
       evaluateNow();
+    } else {
+      // Same timestamp repeated — provider is replaying stale fix, do not refresh wall clock
+      // so GPS staleness can be detected via wall age
     }
   }, [location.fix, evaluateNow]);
 
@@ -425,25 +478,29 @@ export function useAnchorPipeline() {
     [],
   );
 
-  /** TEST HARNESS (armed only): full compound attack — teleport + lockstep C/N0. */
+  /** TEST HARNESS: full compound attack — teleport + lockstep C/N0. Auto-arms if needed so the bottom-bar button and voice command are never dead. DEMO CONTROLS switch still gates the scenario grid; this path keeps the 7-check physics real. 3 fixes + 6 window + 3 debounce ≈10s demo recovery (real would be 5 +12 +10 ≈30s). */
   const injectSpoof = useCallback(() => {
-    if (!demoArmed) return;
     const base = fixesRef.current[fixesRef.current.length - 1];
     if (!base) return; // no live fix yet — never invent a synthetic base
+    if (!demoArmed) {
+      setDemoArmed(true);
+    }
     setSpoofing(true);
     setLastScenario('compound');
-    queueAttack(buildSpoofFixes(base, 5), attackEpochs(5));
+    queueAttack(buildSpoofFixes(base, 3), attackEpochs(3));
   }, [demoArmed, queueAttack, attackEpochs]);
 
-  /** TEST HARNESS (armed only): single-fault scenarios, one per physics check. */
+  /** TEST HARNESS: single-fault scenarios, one per physics check. Auto-arms if needed. */
   const runScenario = useCallback(
     (kind: ScenarioKind) => {
-      if (!demoArmed) return;
+      if (!demoArmed) {
+        setDemoArmed(true);
+      }
       if (kind === 'cno') {
         // Lockstep C/N0 needs no positional base.
         setSpoofing(true);
         setLastScenario(kind);
-        queueAttack([], attackEpochs(5));
+        queueAttack([], attackEpochs(3));
         return;
       }
       // Everything else stages from the newest live fix — with no live fix
@@ -454,22 +511,22 @@ export function useAnchorPipeline() {
       setLastScenario(kind);
       switch (kind) {
         case 'teleport':
-          queueAttack(buildSpoofFixes(base, 5), []);
+          queueAttack(buildSpoofFixes(base, 3), []);
           break;
         case 'altitude':
-          queueAttack(buildAltitudeSpoofFixes(base, 5), []);
+          queueAttack(buildAltitudeSpoofFixes(base, 3), []);
           break;
         case 'heading':
-          queueAttack(buildHeadingSpoofFixes(base, 5), []);
+          queueAttack(buildHeadingSpoofFixes(base, 3), []);
           break;
         case 'temporal':
-          queueAttack(buildTemporalSpoofFixes(base, 5), []);
+          queueAttack(buildTemporalSpoofFixes(base, 3), []);
           break;
         case 'environmental':
           queueAttack(buildEnvironmentalFixes(base), []);
           break;
         case 'compound':
-          queueAttack(buildSpoofFixes(base, 5), attackEpochs(5));
+          queueAttack(buildSpoofFixes(base, 3), attackEpochs(3));
           break;
       }
     },
@@ -487,6 +544,8 @@ export function useAnchorPipeline() {
     baroRef.current = [];
     gnssRef.current = [];
     lastFixTsRef.current = null;
+    lastFixWallMsRef.current = null;
+    setLastFixWallMs(null);
     lastImuTsRef.current = null;
     lastBaroTsRef.current = null;
     lastGnssTsRef.current = null;
@@ -507,13 +566,15 @@ export function useAnchorPipeline() {
    * and requires a live fix to stage from.
    */
   const recoveryDemo = useCallback(() => {
-    if (!demoArmed) return;
+    if (!demoArmed) {
+      setDemoArmed(true);
+    }
     const base = fixesRef.current[fixesRef.current.length - 1];
     if (!base) return; // never invent a synthetic base
     reset();
     setSpoofing(true);
     setLastScenario('compound');
-    queueAttack(buildSpoofFixes(base, 5), attackEpochs(5));
+    queueAttack(buildSpoofFixes(base, 3), attackEpochs(3));
   }, [demoArmed, reset, queueAttack, attackEpochs]);
 
   return {
@@ -534,6 +595,7 @@ export function useAnchorPipeline() {
     toggleDemoArmed,
     detMs,
     telemetry,
+    lastFixWallMs,
     injectSpoof,
     runScenario,
     recoveryDemo,

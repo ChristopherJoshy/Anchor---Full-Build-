@@ -1,8 +1,9 @@
 /**
  * Dashboard component test with REAL SDK physics — only sensor acquisition is
  * stubbed. The pipeline consumes synthetic streams built from the SDK's own
- * fixtures (clean-drive.json / spoofed-jump.json); the six physics checks and
- * the RAIM/FDE state machine run their real code through createAnchorSDK.
+ * fixtures (clean-drive.json / spoofed-jump.json); the seven checks (six
+ * physics + network) and the RAIM/FDE state machine run their real code
+ * through createAnchorSDK.
  */
 import { act, render, screen, waitFor } from '@testing-library/react-native';
 
@@ -42,14 +43,14 @@ function feed(fixture: Fixture, i: number): void {
   testGnssStream.latest = fixture.gnss[i];
 }
 
-const CHECK_LABELS = ['KINEMATIC', 'HEADING', 'TEMPORAL', 'ALTITUDE', 'ENVIRONMENTAL', 'CN0'];
+const CHECK_LABELS = ['KINEMATIC', 'HEADING', 'TEMPORAL', 'ALTITUDE', 'ENVIRONMENTAL', 'CN0', 'NETWORK'];
 /** Feeds the ENTIRE fixture: the spoofed-jump teleport lands at frame ~105,
  * so a partial walk never reaches the attack. */
 const WALK_LENGTH = 120;
 
 describe('dashboard with real SDK physics', () => {
   it(
-    'walks the clean-drive fixture into TRUSTED with six gauges and an event log',
+    'walks the clean-drive fixture into TRUSTED with seven gauges and an event log',
     async () => {
       const { rerender } = render(<DashboardScreen />);
 
@@ -68,7 +69,11 @@ describe('dashboard with real SDK physics', () => {
         { timeout: 30_000 },
       );
       for (const label of CHECK_LABELS) {
-        expect(screen.getByText(label)).toBeTruthy();
+        if (label === 'NETWORK') {
+          expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+        } else {
+          expect(screen.getByText(label)).toBeTruthy();
+        }
       }
       expect(screen.getByText('EVENT LOG')).toBeTruthy();
     },

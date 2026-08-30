@@ -43,9 +43,11 @@ export interface TapeGaugeProps {
   passed: boolean;
   /** Overall pipeline state color (semantic — see theme). */
   stateColor: string;
+  /** Optional check detail for live debugging — truncated below gauge. */
+  detail?: string | null;
 }
 
-export function TapeGauge({ checkId, score, passed, stateColor }: TapeGaugeProps) {
+export function TapeGauge({ checkId, score, passed, stateColor, detail }: TapeGaugeProps) {
   const hasData = score !== null && Number.isFinite(score);
   const safeScore = hasData ? Math.max(0, Math.min(1, score as number)) : 0;
   const displayScore = Math.round(safeScore * 100);
@@ -64,7 +66,10 @@ export function TapeGauge({ checkId, score, passed, stateColor }: TapeGaugeProps
 
   return (
     <View style={styles.cell}>
-      <Text style={styles.label}>{checkId.toUpperCase()}</Text>
+      <View style={styles.labelRow}>
+        <View style={[styles.liveDot, { backgroundColor: hasData ? (passed ? stateColor : colors.caution) : colors.chrome }]} />
+        <Text style={styles.label}>{checkId.toUpperCase()}</Text>
+      </View>
       <View style={styles.viewport}>
         <Animated.View style={[styles.column, columnStyle]}>
           {TICKS.map((tick) => (
@@ -93,6 +98,11 @@ export function TapeGauge({ checkId, score, passed, stateColor }: TapeGaugeProps
           {!hasData ? 'HOLD' : passed ? 'OK' : 'FAIL'}
         </Text>
       </View>
+      {detail ? (
+        <Text style={styles.detail} numberOfLines={1}>
+          {detail.slice(0, 22)}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -100,13 +110,24 @@ export function TapeGauge({ checkId, score, passed, stateColor }: TapeGaugeProps
 const styles = StyleSheet.create({
   cell: {
     alignItems: 'center',
+    paddingVertical: 4,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   label: {
     ...monoNumeric,
     fontSize: 9,
     letterSpacing: 1.5,
     color: colors.textMuted,
-    marginBottom: 4,
   },
   viewport: {
     width: 96,
@@ -193,5 +214,14 @@ const styles = StyleSheet.create({
   },
   flagFail: {
     color: colors.caution,
+  },
+  detail: {
+    ...monoNumeric,
+    fontSize: 7,
+    letterSpacing: 0.5,
+    color: colors.textMuted,
+    marginTop: 2,
+    maxWidth: 90,
+    textAlign: 'center',
   },
 });

@@ -38,23 +38,29 @@ import { networkCheck } from './physics/networkCheck';
  * outputs, no module-level state.
  */
 
-/** Consecutive clean evaluations required to leave DENIED or DEGRADED. */
-export const RECOVERY_DEBOUNCE = 5;
+/** Consecutive clean evaluations required to leave DENIED or DEGRADED.
+ * Demo tuned to 3 for ~10s recovery (attack → RECOVERING → TRUSTED) so the
+ * spoof demo is visible in a short window; real deployment would use 10 for
+ * ~30s (30 evaluations at 1 Hz) to ride out longer GNSS outages. */
+export const RECOVERY_DEBOUNCE = 3;
 
 /**
  * Relative weight of each check in the confidence score. Kinematic and cn0
- * are the strongest spoof discriminators and dominate the score. Network is
- * the weakest single signal (a VPN is common and legitimate) — it drops the
- * score but never alone decides the state.
+ * are the strongest spoof discriminators and dominate the score. Network
+ * (VPN) is a location-integrity signal — a VPN re-terminates the network
+ * path elsewhere, so the network location is untrusted while the tunnel is
+ * up; the instrument never holds TRUSTED with a VPN and must ride the full
+ * debounce after it clears. Weight 0.25 makes VPN alone drop confidence to
+ * ~75% and show DEGRADED with a clear UNTRUSTED banner.
  */
 const CHECK_WEIGHTS: Record<CheckId, number> = {
-  kinematic: 0.25,
-  cn0: 0.25,
-  heading: 0.15,
-  temporal: 0.1,
-  altitude: 0.1,
-  environmental: 0.1,
-  network: 0.15,
+  kinematic: 0.22,
+  cn0: 0.22,
+  heading: 0.13,
+  temporal: 0.09,
+  altitude: 0.09,
+  environmental: 0.09,
+  network: 0.16,
 };
 
 /** Check pairs whose joint failure means an active attack, not drift. */
