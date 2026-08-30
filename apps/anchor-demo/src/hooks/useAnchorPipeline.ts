@@ -203,6 +203,14 @@ export function useAnchorPipeline() {
   const lastStateRef = useRef<IntegrityState | null>(null);
   const eventIdRef = useRef(0);
   const generationRef = useRef(0);
+  // Data-version counter: bumped on every REAL new sensor sample pushed into a
+  // window. The 1 Hz tick only runs an evaluation when this moved — a frozen
+  // window (no fresh measurements) must NOT accumulate recovery-debounce credit
+  // (RAIM/WAAS practice: recovery counts new-data epochs, never re-evaluations
+  // of identical data). This is the root fix for "recovery not working right".
+  const dataVersionRef = useRef(0);
+  const lastEvalDataVersionRef = useRef(-1);
+  const verdictRef = useRef<Verdict | null>(null);
   const lastFixTsRef = useRef<number | null>(null);
   const lastFixWallMsRef = useRef<number | null>(null);
   const lastImuTsRef = useRef<number | null>(null);
@@ -300,11 +308,14 @@ export function useAnchorPipeline() {
   }, []);
 
   // Real sensor streams push into the window refs, deduplicated by timestamp.
+  // Every accepted push bumps dataVersionRef so the evaluation tick knows the
+  // window carries fresh measurements.
   useEffect(() => {
     if (!imu.sample) return;
     if (lastImuTsRef.current !== null && imu.sample.timestamp === lastImuTsRef.current) return;
     lastImuTsRef.current = imu.sample.timestamp;
     imuRef.current = pushCapped(imuRef.current, imu.sample, WINDOW_IMU_CAP);
+    dataVersionRef.current += 1;
   }, [imu.sample]);
 
   useEffect(() => {
@@ -312,6 +323,7 @@ export function useAnchorPipeline() {
     if (lastBaroTsRef.current !== null && baro.sample.timestamp === lastBaroTsRef.current) return;
     lastBaroTsRef.current = baro.sample.timestamp;
     baroRef.current = pushCapped(baroRef.current, baro.sample, WINDOW_BARO_CAP);
+    dataVersionRef.current += 1;
   }, [baro.sample]);
 
   useEffect(() => {
@@ -319,37 +331,48 @@ export function useAnchorPipeline() {
     if (lastGnssTsRef.current !== null && gnss.latest.timestamp === lastGnssTsRef.current) return;
     lastGnssTsRef.current = gnss.latest.timestamp;
     gnssRef.current = pushCapped(gnssRef.current, gnss.latest, WINDOW_GNSS_CAP);
+    dataVersionRef.current += 1;
   }, [gnss.latest]);
 
-  // One evaluation step: absorb new sensor data, drain at most one armed
-  // harness frame, run the REAL pipeline with measured timing.
+  // Keep a verdict mirror in a ref so evaluateNow never depends on verdict state
+  // (a changing evaluateNow identity would tear down/recreate the 1 Hz tick).
+  useEffect(() => {
+    verdictRef.current = verdict;
+  }, [verdict]);
+
+  // One evaluation step: absorb new sensor data (bumping the data version),
+  // drain at most one armed harness frame, run the REAL pipeline once per
+  // distinct data epoch.
   const evaluateNow = useCallback(() => {
     const fix = locationFixRef.current;
     if (fix && (lastFixTsRef.current === null || fix.timestamp !== lastFixTsRef.current)) {
       lastFixTsRef.current = fix.timestamp;
       fixesRef.current = pushCapped(fixesRef.current, fix, WINDOW_FIX_CAP);
+      dataVersionRef.current += 1;
     }
     if (spoofFixesRef.current.length > 0) {
       const [spoofFix, ...rest] = spoofFixesRef.current;
       spoofFixesRef.current = rest;
       fixesRef.current = pushCapped(fixesRef.current, spoofFix, WINDOW_FIX_CAP);
+      dataVersionRef.current += 1;
     }
     if (spoofGnssRef.current.length > 0) {
       const [spoofEpoch, ...rest] = spoofGnssRef.current;
       spoofGnssRef.current = rest;
       gnssRef.current = pushCapped(gnssRef.current, spoofEpoch, WINDOW_GNSS_CAP);
+      dataVersionRef.current += 1;
     }
     // GPS staleness is handled in the dashboard layer (HOLD gauges + banner) so the
     // pipeline keeps its last verdict and does not glitch TRUSTED↔STANDBY. No purge here.
-    // The 1 Hz tick continues to evaluate with the last window until a fresh fix arrives.
     if (fixesRef.current.length === 0) {
       setTelemetry(null);
       // If we had a verdict, clear it — stale window should not keep TRUSTED
-      if (verdict !== null) {
+      if (verdictRef.current !== null) {
         lastStateRef.current = null;
         setVerdict(null);
         setDetMs(null);
       }
+      lastEvalDataVersionRef.current = dataVersionRef.current;
       return;
     }
 
@@ -366,6 +389,8 @@ export function useAnchorPipeline() {
           : {}),
       }),
     );
+    lastEvalDataVersionRef.current = dataVersionRef.current;
+    lastEvalAtRef.current = Date.now();
     setVerdict(v);
     setDetMs(ms);
 
@@ -392,7 +417,7 @@ export function useAnchorPipeline() {
       recordTransition(v);
       hapticForState(v.state);
     }
-  }, [sdk, recordTransition, hapticForState, verdict]);
+  }, [sdk, recordTransition, hapticForState]);
 
   // Immediate path: evaluate as soon as a NEW fix lands (live GPS at 1 Hz).
   useEffect(() => {
@@ -403,17 +428,19 @@ export function useAnchorPipeline() {
       lastFixWallMsRef.current = now;
       setLastFixWallMs(now);
       evaluateNow();
-    } else {
-      // Same timestamp repeated — provider is replaying stale fix, do not refresh wall clock
-      // so GPS staleness can be detected via wall age
     }
+    // Same timestamp repeated — provider replayed the same fix; the push
+    // dedupe already rejected it, and the tick will only evaluate again
+    // once genuinely new sensor data arrives.
   }, [location.fix, evaluateNow]);
 
-  // Stall-proof 1 Hz tick: keeps status/gauges live when GPS fixes stop, and
-  // drains armed harness frames at a fixed cadence. Skips when the fix path
-  // just evaluated so the debounce machine advances at ~1 eval/s, not 2.
+  // 1 Hz tick: evaluates ONLY when the window gained fresh measurements since
+  // the last evaluation (dataVersionRef moved). A frozen window never advances
+  // the recovery-debounce machine — RAIM/WAAS practice: recovery credit is
+  // earned on new-data epochs, never on re-reading identical data.
   useEffect(() => {
     const id = setInterval(() => {
+      if (dataVersionRef.current === lastEvalDataVersionRef.current) return;
       if (Date.now() - lastEvalAtRef.current < 900) return;
       evaluateNow();
     }, 1000);
@@ -438,6 +465,9 @@ export function useAnchorPipeline() {
   const queueAttack = useCallback((fixes: Fix[], epochs: GnssMeasurementSample[]) => {
     spoofFixesRef.current = spoofFixesRef.current.concat(fixes);
     spoofGnssRef.current = spoofGnssRef.current.concat(epochs);
+    // Wake the evaluation tick so it drains the staged frames even if no other
+    // sensor pushes new data this second (the drain itself bumps the version).
+    dataVersionRef.current += 1;
   }, []);
 
   const attackEpochs = useCallback(
@@ -519,6 +549,8 @@ export function useAnchorPipeline() {
     lastImuTsRef.current = null;
     lastBaroTsRef.current = null;
     lastGnssTsRef.current = null;
+    dataVersionRef.current += 1;
+    lastEvalDataVersionRef.current = dataVersionRef.current;
     eventIdRef.current = 0;
     generationRef.current += 1;
     setVerdict(null);
@@ -556,6 +588,8 @@ export function useAnchorPipeline() {
     gnssError: gnss.error,
     gnssStatus: gnss.status,
     gnssSupported: gnss.supported,
+    /** Latest raw IMU sample (heading + calibration signals) for the CAL row. */
+    latestImu: imu.sample,
     // pipeline state
     verdict,
     events,

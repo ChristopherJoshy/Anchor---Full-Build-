@@ -23,7 +23,7 @@ export { default as AnchorNet } from './gnss/AnchorNetModule';
 // Sensor hooks and their pure helpers.
 export { useLocationStream } from './sensors/useLocationStream';
 export { locationToFix } from './sensors/fixMapping';
-export { useImuStream } from './sensors/useImuStream';
+export { useImuStream, MAG_FIELD_MIN_UT, MAG_FIELD_MAX_UT } from './sensors/useImuStream';
 export { magnetometerHeadingDeg, wrapAngleDelta } from './sensors/headingMath';
 export { useBarometerStream } from './sensors/useBarometerStream';
 export { useGnssMeasurements } from './sensors/useGnssMeasurements';

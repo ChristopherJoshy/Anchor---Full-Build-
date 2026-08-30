@@ -29,11 +29,26 @@ export interface Fix {
   timestamp: number;
 }
 
-/** One fused inertial sample. `headingDeg` is magnetic heading (portrait convention, 0-360). */
+/**
+ * One fused inertial sample. `headingDeg` is magnetic heading (portrait convention, 0-360).
+ *
+ * Calibration signals (all computed from raw sensor data, never asserted):
+ *  - `magFieldUt`      — |B| = √(x²+y²+z²) of the latest magnetometer sample,
+ *                        µT. Earth field is 25–65 µT (AOSP EARTH_MIN 30 /
+ *                        EARTH_MAX 60 with a 5 µT practitioner margin); outside
+ *                        the window the compass is uncalibrated/interfered.
+ *  - `magCalibrated`   — |B| inside the window (null before first mag sample).
+ *  - `gyroBiasRadSec`  — live z-axis rest-bias estimate (mean of recent gyro z
+ *                        while the device is demonstrably at rest); already
+ *                        subtracted from the integrated heading rate.
+ */
 export interface ImuSample {
   headingDeg: number | null;
   gyroRadSec: { x: number; y: number; z: number } | null;
   timestamp: number;
+  magFieldUt?: number | null;
+  magCalibrated?: boolean | null;
+  gyroBiasRadSec?: number | null;
 }
 
 /** One barometric reading. */

@@ -88,7 +88,9 @@ export default function DashboardScreen() {
     detMs,
     telemetry,
     lastScenario,
+    latestImu,
   } = pipeline;
+  const imu = latestImu;
 
   // Real network-integrity signals (native VPN probe + IP↔GPS divergence).
   const net = useNetworkIntelligence(
@@ -302,6 +304,40 @@ export default function DashboardScreen() {
                   </Text>
                 </Text>
               </View>
+              {/* CAL — live sensor calibration, all computed from raw physics
+                  (expo-sensors drops the native accuracy callback, so quality
+                  is derived: |B| window for compass, rest-bias mean for gyro) */}
+              <View style={[styles.telRow, styles.telLast]}>
+                <Text style={styles.telLabel}>CAL</Text>
+                <Text style={styles.telVal}>
+                  <Text
+                    style={
+                      imu?.magCalibrated === false
+                        ? styles.telWarn
+                        : imu?.magCalibrated === true
+                        ? styles.telOk
+                        : styles.telMuted
+                    }
+                  >
+                    {`COMPASS ${imu?.magFieldUt != null ? `${imu.magFieldUt.toFixed(1)}µT` : '—'} ${
+                      imu?.magCalibrated === false ? 'CALIBRATING' : imu?.magCalibrated === true ? 'OK' : 'WAIT'
+                    }`}
+                  </Text>
+                  {' · '}
+                  <Text style={imu?.gyroBiasRadSec != null ? styles.telOk : styles.telMuted}>
+                    {`GYRO ${
+                      imu?.gyroBiasRadSec != null
+                        ? `BIAS ${(imu.gyroBiasRadSec * 1e6).toFixed(0)}µrad/s`
+                        : 'SAMPLING'
+                    }`}
+                  </Text>
+                </Text>
+              </View>
+              {imu?.magCalibrated === false ? (
+                <View style={styles.calHintRow}>
+                  <Text style={styles.calHint}>Compass field {imu?.magFieldUt != null ? imu.magFieldUt.toFixed(1) : '—'} µT outside the 25–65 µT Earth window — move the phone in a figure-8 until CALIBRATING clears.</Text>
+                </View>
+              ) : null}
             </View>
           </View>
         ) : null}
@@ -680,6 +716,16 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderBottomWidth: hairline,
     borderBottomColor: colors.panelBg,
+  },
+  calHintRow: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  calHint: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.caution,
   },
   recoveryNote: {
     marginHorizontal: spacing.lg,

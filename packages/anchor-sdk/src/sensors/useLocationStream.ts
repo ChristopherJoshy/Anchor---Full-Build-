@@ -13,16 +13,17 @@ export interface LocationStream {
 }
 
 /**
- * Streams foreground location fixes at 1 Hz.
+ * Streams foreground location fixes at ~1 Hz.
  *
- * Balanced accuracy is used for real-phone indoor robustness: High (~10 m)
- * would require a GPS satellite fix that is unavailable indoors on many
- * devices (e.g., iQOO I2501 shows 0 GPS reports but fused has a fix), so the
- * stream would stall and the dashboard would show stale HOLD. Balanced
- * delivers fused/network fixes indoors at ~20-50 m accuracy, which the
- * kinematic envelope and heading checks handle via the reported accuracy
- * value as physics input — the checks remain real, just with larger
- * tolerances, and the app stays live.
+ * BestForNavigation is the live-data choice (Expo SDK 57 maps it to Android
+ * PRIORITY_HIGH_ACCURACY with a 500 ms interval and 0 m distance gate): the
+ * fused provider uses GPS + Wi-Fi + cell, delivering every computed fix
+ * outdoors at ~1 Hz and indoors from the network layer, instead of Balanced,
+ * which stops computing entirely while the device sits on one Wi-Fi AP.
+ *
+ * A real last-known position (LocationManager cache) seeds the stream
+ * immediately with its own original timestamp — staleness is judged from that
+ * timestamp downstream, never re-stamped.
  *
  * Permission policy: the embedding app is responsible for requesting location
  * permission BEFORE mounting this hook; this hook only reads the current
@@ -55,8 +56,22 @@ export function useLocationStream(): LocationStream {
         return;
       }
 
+      // Real cached fix first (own timestamp preserved — may be stale, the
+      // pipeline judges age downstream). Never synthesized, never re-stamped.
+      try {
+        const lastKnown = await Location.getLastKnownPositionAsync({
+          maxAge: 15_000,
+          requiredAccuracy: 500,
+        });
+        if (!cancelled && lastKnown) {
+          setFix(locationToFix(lastKnown));
+        }
+      } catch {
+        // No usable cached fix — the live stream below delivers the first one.
+      }
+
       subscription = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.Balanced, timeInterval: 1000, distanceInterval: 0 },
+        { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 0 },
         (location) => {
           if (cancelled) return;
           setError(null);
