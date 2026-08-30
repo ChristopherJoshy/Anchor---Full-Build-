@@ -29,7 +29,8 @@ export function useBarometerStream(): BarometerStream {
       const available = await Barometer.isAvailableAsync();
       if (cancelled) return;
       if (!available) {
-        setError('No barometer available on this device.');
+        // No barometer hardware (e.g., iQOO I2501) — not an error, just no data;
+        // altitudeCheck handles this as "no barometer" and passes, telemetry shows —.
         return;
       }
       Barometer.setUpdateInterval(100);

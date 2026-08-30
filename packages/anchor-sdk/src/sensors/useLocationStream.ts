@@ -13,12 +13,16 @@ export interface LocationStream {
 }
 
 /**
- * Streams foreground location fixes at 1 Hz (High accuracy, ~10 m fixes).
+ * Streams foreground location fixes at 1 Hz.
  *
- * High (not Balanced) is deliberate: the kinematic envelope and heading
- * track-bearing checks judge the fix against its reported accuracy — tight,
- * trustworthy fixes make the integrity checks meaningful, and the accuracy
- * value itself is part of the physics.
+ * Balanced accuracy is used for real-phone indoor robustness: High (~10 m)
+ * would require a GPS satellite fix that is unavailable indoors on many
+ * devices (e.g., iQOO I2501 shows 0 GPS reports but fused has a fix), so the
+ * stream would stall and the dashboard would show stale HOLD. Balanced
+ * delivers fused/network fixes indoors at ~20-50 m accuracy, which the
+ * kinematic envelope and heading checks handle via the reported accuracy
+ * value as physics input — the checks remain real, just with larger
+ * tolerances, and the app stays live.
  *
  * Permission policy: the embedding app is responsible for requesting location
  * permission BEFORE mounting this hook; this hook only reads the current
@@ -52,7 +56,7 @@ export function useLocationStream(): LocationStream {
       }
 
       subscription = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.High, timeInterval: 1000 },
+        { accuracy: Location.Accuracy.Balanced, timeInterval: 1000, distanceInterval: 0 },
         (location) => {
           if (cancelled) return;
           setError(null);

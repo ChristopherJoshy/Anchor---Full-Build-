@@ -112,13 +112,13 @@ export default function DashboardScreen() {
   const locationDenied = permsLoaded && decisions.location === 'denied';
   const locationErrorActive = !!pipeline.locationError && permsLoaded && decisions.location === 'granted';
   const noLiveGps = telemetry === null && !locationDenied && !locationErrorActive;
-  // Wall-clock staleness: 5s without a new GPS timestamp (not fixAgeMs which is huge for old fixtures)
+  // Wall-clock staleness: 15s without a new GPS timestamp (not fixAgeMs which is huge for old fixtures)
+  // Increased from 5s to 15s to avoid flicker on real phones where GPS updates are bursty
   const gpsStale =
-    pipeline.lastFixWallMs !== null && Date.now() - pipeline.lastFixWallMs > 5000 && telemetry !== null;
-  // When GPS is stale for >7.5s, the pipeline will purge to STANDBY; while stale (5-7.5s) show HOLD gauges so they don't look live
+    pipeline.lastFixWallMs !== null && Date.now() - pipeline.lastFixWallMs > 15000 && telemetry !== null;
+  // Show HOLD for physics gauges when stale, but keep NETWORK visible (VPN must still show 0 even when GPS stale)
   const gaugesStale = gpsStale || telemetry === null;
-  // Slow recovery: while GPS stale, force STANDBY display (not TRUSTED with old data) — pipeline will also purge after 7.5s
-  const displayVerdict = gpsStale ? null : pipeline.verdict;
+  const displayVerdict = pipeline.verdict;
   const displayStateColor = displayVerdict ? colorForIntegrityState(displayVerdict.state) : colors.textMuted;
 
   const resultFor = useCallback(
@@ -284,7 +284,18 @@ export default function DashboardScreen() {
                   {' · '}
                   <Text style={pipeline.imuError ? styles.telFail : styles.telOk}>IMU{pipeline.imuError ? '✗' : '✓'}</Text>
                   {' · '}
-                  <Text style={pipeline.baroError ? styles.telFail : styles.telOk}>BARO{pipeline.baroError ? '✗' : '✓'}</Text>
+                  <Text
+                    style={
+                      telemetry.baroHpa === null && !pipeline.baroError
+                        ? styles.telMuted
+                        : pipeline.baroError
+                        ? styles.telFail
+                        : styles.telOk
+                    }
+                  >
+                    BARO
+                    {telemetry.baroHpa === null && !pipeline.baroError ? ' N/A' : pipeline.baroError ? '✗' : '✓'}
+                  </Text>
                   {' · '}
                   <Text style={pipeline.gnssSupported === false ? styles.telMuted : pipeline.gnssError ? styles.telFail : styles.telOk}>
                     GNSS{pipeline.gnssSupported === false ? 'N/A' : pipeline.gnssError ? '✗' : '✓'}
@@ -319,14 +330,16 @@ export default function DashboardScreen() {
             <View style={styles.gaugeRow}>
               {CHECK_ORDER.slice(4).map((id) => {
                 const r = resultFor(id);
+                const isNetwork = id === 'network';
+                const staleForGauge = !isNetwork && gaugesStale;
                 return (
                   <View key={id} style={styles.gaugeCell}>
                     <TapeGauge
                       checkId={id}
-                      score={gaugesStale ? null : r ? r.score : null}
+                      score={staleForGauge ? null : r ? r.score : null}
                       passed={r?.passed ?? true}
                       stateColor={displayStateColor}
-                      detail={gaugesStale ? 'stale — no new fix' : r?.detail ?? null}
+                      detail={staleForGauge ? 'stale — no new fix' : r?.detail ?? null}
                     />
                   </View>
                 );
@@ -335,9 +348,9 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* NETWORK */}
+        {/* NETWORK — physics-detected VPN, no OS mock */}
         <View>
-          <SectionHeader title="NETWORK" meta="ANCHORNET • OS-REPORTED" />
+          <SectionHeader title="NETWORK" meta="PHYSICS DETECTED" />
           <View style={styles.panel}>
             <View style={styles.netRow}>
               <Text style={styles.telLabel}>VPN</Text>
@@ -365,7 +378,7 @@ export default function DashboardScreen() {
           {netBannerVisible ? (
             <View style={[styles.banner, net.vpnActive ? styles.bannerVpn : styles.bannerWarn]}>
               <Text style={styles.bannerTitle}>
-                {net.vpnActive ? 'VPN TUNNEL ACTIVE — OS-REPORTED' : 'IP↔GPS DIVERGENCE'}
+                {net.vpnActive ? 'VPN TUNNEL ACTIVE — PHYSICS DETECTED' : 'IP↔GPS DIVERGENCE'}
               </Text>
               <Text style={styles.bannerBody}>
                 {net.vpnActive

@@ -339,39 +339,9 @@ export function useAnchorPipeline() {
       spoofGnssRef.current = rest;
       gnssRef.current = pushCapped(gnssRef.current, spoofEpoch, WINDOW_GNSS_CAP);
     }
-    // GPS signal lost: no new fix for GPS_STALE_MS — purge to STANDBY so the UI
-    // never shows a stale TRUSTED with old coordinates. Real sensor loss, no mock.
-    // Uses wall-clock of last received fix, not GPS timestamp (fixtures may be old).
-    if (lastFixWallMsRef.current !== null && Date.now() - lastFixWallMsRef.current > GPS_STALE_MS) {
-      if (fixesRef.current.length > 0 || verdict !== null) {
-        fixesRef.current = [];
-        lastFixTsRef.current = null;
-        lastFixWallMsRef.current = null;
-        setLastFixWallMs(null);
-        // Keep IMU/BARO/GNSS for next fix but clear telemetry/verdict instantly
-        lastStateRef.current = null;
-        setVerdict(null);
-        setTelemetry(null);
-        setDetMs(null);
-        spoofFixesRef.current = [];
-        spoofGnssRef.current = [];
-        setSpoofing(false);
-        setEvents((prev) => {
-          const id = (eventIdRef.current += 1);
-          const entry: EventLogEntry = {
-            id,
-            timestamp: Date.now(),
-            state: 'NETWORK',
-            reason: 'GPS signal lost — no fix for 7.5s, instrument to STANDBY',
-            failedChecks: [],
-            explanation: null,
-            embedding: null,
-          };
-          return [entry, ...prev];
-        });
-      }
-      return;
-    }
+    // GPS staleness is handled in the dashboard layer (HOLD gauges + banner) so the
+    // pipeline keeps its last verdict and does not glitch TRUSTED↔STANDBY. No purge here.
+    // The 1 Hz tick continues to evaluate with the last window until a fresh fix arrives.
     if (fixesRef.current.length === 0) {
       setTelemetry(null);
       // If we had a verdict, clear it — stale window should not keep TRUSTED

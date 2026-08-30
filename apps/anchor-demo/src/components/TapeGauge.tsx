@@ -64,13 +64,19 @@ export function TapeGauge({ checkId, score, passed, stateColor, detail }: TapeGa
     transform: [{ translateY: VIEWPORT_H / 2 - (TOP_VALUE - value.value) * PX_PER_UNIT }],
   }));
 
+  const failed = hasData && !passed;
   return (
     <View style={styles.cell}>
       <View style={styles.labelRow}>
-        <View style={[styles.liveDot, { backgroundColor: hasData ? (passed ? stateColor : colors.caution) : colors.chrome }]} />
+        <View
+          style={[
+            styles.liveDot,
+            { backgroundColor: hasData ? (failed ? colors.denied : stateColor) : colors.chrome },
+          ]}
+        />
         <Text style={styles.label}>{checkId.toUpperCase()}</Text>
       </View>
-      <View style={styles.viewport}>
+      <View style={[styles.viewport, failed && { borderColor: colors.denied }]}>
         <Animated.View style={[styles.column, columnStyle]}>
           {TICKS.map((tick) => (
             <View
@@ -85,15 +91,19 @@ export function TapeGauge({ checkId, score, passed, stateColor, detail }: TapeGa
           ))}
         </Animated.View>
         {/* fixed center marker */}
-        <View style={[styles.centerMarker, { backgroundColor: hasData ? stateColor : colors.chrome }]} />
+        <View
+          style={[styles.centerMarker, { backgroundColor: hasData ? (failed ? colors.denied : stateColor) : colors.chrome }]}
+        />
         {/* fixed readout — static text, column is animated */}
-        <View style={[styles.readout, { borderColor: hasData ? stateColor : colors.chrome }]}>
-          <Text style={[styles.readoutText, { color: hasData ? stateColor : colors.textMuted }]}>
+        <View style={[styles.readout, { borderColor: hasData ? (failed ? colors.denied : stateColor) : colors.chrome }]}>
+          <Text style={[styles.readoutText, { color: hasData ? (failed ? colors.denied : stateColor) : colors.textMuted }]}>
             {hasData ? displayScore.toString().padStart(3, '0') : '—'}
           </Text>
         </View>
       </View>
-      <View style={[styles.flag, { borderColor: !hasData ? colors.chrome : passed ? colors.chrome : colors.caution }]}>
+      <View
+        style={[styles.flag, { borderColor: !hasData ? colors.chrome : failed ? colors.denied : colors.chrome }]}
+      >
         <Text style={[styles.flagText, !hasData ? styles.flagHold : passed ? styles.flagOk : styles.flagFail]}>
           {!hasData ? 'HOLD' : passed ? 'OK' : 'FAIL'}
         </Text>
@@ -213,7 +223,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   flagFail: {
-    color: colors.caution,
+    color: colors.denied,
   },
   detail: {
     ...monoNumeric,
