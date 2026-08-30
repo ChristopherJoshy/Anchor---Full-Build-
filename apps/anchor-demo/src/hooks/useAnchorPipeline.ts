@@ -9,7 +9,7 @@
  * live. Armed frames enter the SAME sdk.evaluate() path as live GPS — the
  * pipeline never knows the difference and nothing else is ever substituted.
  */
-import { useBarometerStream, useGnssMeasurements, useImuStream, useLocationStream } from 'anchor-sdk';
+import { AnchorNet, useBarometerStream, useGnssMeasurements, useImuStream, useLocationStream } from 'anchor-sdk';
 import type {
   AnchorSDK,
   BaroSample,
@@ -59,7 +59,8 @@ export interface Telemetry {
 export interface EventLogEntry {
   id: number;
   timestamp: number;
-  state: IntegrityState;
+  /** Machine state — or 'NETWORK' for network-layer recorder rows. */
+  state: IntegrityState | 'NETWORK';
   reason: string;
   failedChecks: CheckId[];
   /** Plain-language explanation from the on-device Qwen3 model when it resolves. */
@@ -174,18 +175,6 @@ function buildSpoofGnssEpoch(timestamp: number, epochIdx: number): GnssMeasureme
   };
 }
 
-function defaultFix(): Fix {
-  return {
-    latitude: 37.42,
-    longitude: -122.084,
-    altitude: 30,
-    accuracy: 5,
-    speed: 10,
-    bearing: 180,
-    timestamp: Date.now(),
-  };
-}
-
 export function useAnchorPipeline() {
   // The SDK instance owns the recovery-debounce machine; RESET replaces it.
   const [sdk, setSdk] = useState<AnchorSDK>(() => createAnchorSDK());
@@ -218,6 +207,9 @@ export function useAnchorPipeline() {
   const lastEvalAtRef = useRef(0);
   const spoofFixesRef = useRef<Fix[]>([]);
   const spoofGnssRef = useRef<GnssMeasurementSample[]>([]);
+  // Real OS-level VPN signal (AnchorNet), sampled on a 2 s poll and read at
+  // evaluation time so every window carries the current tunnel state.
+  const vpnActiveRef = useRef<boolean | null>(null);
 
   const recordTransition = useCallback(
     (v: Verdict) => {
@@ -232,10 +224,9 @@ export function useAnchorPipeline() {
         explanation: null,
         embedding: null,
       };
-      setEvents((prev) => [entry, ...prev]);
-
-      // REAL on-device advisory enrichment (Qwen3 1.7B + mpnet embeddings).
-      // The UI shows the deterministic reason until the model produces text.
+      // REAL on-device advisory enrichment (Qwen3 0.6B + mpnet embeddings),
+      // latency-capped by the SDK watchdog. The UI shows the deterministic
+      // reason until the model produces text.
       sdk
         .explain(v)
         .then((explanation: string) => {
@@ -259,19 +250,38 @@ export function useAnchorPipeline() {
     [sdk],
   );
 
-  /** Real network-integrity events (VPN tunnel / IP-GPS divergence) into the log. */
+  /**
+   * Real network-integrity events (VPN tunnel / IP-GPS divergence) into the
+   * log. State 'NETWORK' — these rows record the network layer, not a
+   * machine transition, and must not render as a green TRUSTED row.
+   */
   const recordNetwork = useCallback((text: string) => {
     const id = (eventIdRef.current += 1);
     const entry: EventLogEntry = {
       id,
       timestamp: Date.now(),
-      state: lastStateRef.current ?? 'TRUSTED',
+      state: 'NETWORK',
       reason: text,
       failedChecks: [],
       explanation: null,
       embedding: null,
     };
     setEvents((prev) => [entry, ...prev]);
+  }, []);
+
+  // AnchorNet poll: sample the real OS VPN signal every 2 s into a ref so
+  // each evaluation window carries the tunnel state at evaluation time.
+  useEffect(() => {
+    const poll = () => {
+      try {
+        vpnActiveRef.current = AnchorNet.isVpnActive();
+      } catch {
+        vpnActiveRef.current = null;
+      }
+    };
+    poll();
+    const id = setInterval(poll, 2000);
+    return () => clearInterval(id);
   }, []);
 
   const hapticForState = useCallback((state: IntegrityState) => {
@@ -332,9 +342,13 @@ export function useAnchorPipeline() {
         imu: imuRef.current,
         baro: baroRef.current,
         gnss: gnssRef.current,
+        // Real OS VPN probe; omitted until the first AnchorNet poll lands so
+        // the check abstains instead of inventing a value.
+        ...(vpnActiveRef.current !== null
+          ? { network: { vpnActive: vpnActiveRef.current } }
+          : {}),
       }),
     );
-    lastEvalAtRef.current = Date.now();
     setVerdict(v);
     setDetMs(ms);
 
@@ -383,16 +397,24 @@ export function useAnchorPipeline() {
     return () => clearInterval(id);
   }, [evaluateNow]);
 
-  const toggleDemoArmed = useCallback(() => setDemoArmed((v) => !v), []);
+  // Disarming must leave ZERO staged frames in flight: the queue drains into
+  // the same evaluate() path as live GPS, so a stale armed queue would keep
+  // feeding synthetic frames while the switch reads LIVE SENSORS ONLY.
+  const toggleDemoArmed = useCallback(() => {
+    setDemoArmed((armed) => {
+      if (armed) {
+        spoofFixesRef.current = [];
+        spoofGnssRef.current = [];
+        setSpoofing(false);
+        setLastScenario(null);
+      }
+      return !armed;
+    });
+  }, []);
 
   const queueAttack = useCallback((fixes: Fix[], epochs: GnssMeasurementSample[]) => {
-    if (spoofFixesRef.current.length > 0 || spoofGnssRef.current.length > 0) {
-      spoofFixesRef.current = fixes;
-      spoofGnssRef.current = epochs;
-    } else {
-      spoofFixesRef.current = spoofFixesRef.current.concat(fixes);
-      spoofGnssRef.current = spoofGnssRef.current.concat(epochs);
-    }
+    spoofFixesRef.current = spoofFixesRef.current.concat(fixes);
+    spoofGnssRef.current = spoofGnssRef.current.concat(epochs);
   }, []);
 
   const attackEpochs = useCallback(
@@ -406,9 +428,10 @@ export function useAnchorPipeline() {
   /** TEST HARNESS (armed only): full compound attack — teleport + lockstep C/N0. */
   const injectSpoof = useCallback(() => {
     if (!demoArmed) return;
+    const base = fixesRef.current[fixesRef.current.length - 1];
+    if (!base) return; // no live fix yet — never invent a synthetic base
     setSpoofing(true);
     setLastScenario('compound');
-    const base = fixesRef.current[fixesRef.current.length - 1] ?? defaultFix();
     queueAttack(buildSpoofFixes(base, 5), attackEpochs(5));
   }, [demoArmed, queueAttack, attackEpochs]);
 
@@ -416,15 +439,22 @@ export function useAnchorPipeline() {
   const runScenario = useCallback(
     (kind: ScenarioKind) => {
       if (!demoArmed) return;
+      if (kind === 'cno') {
+        // Lockstep C/N0 needs no positional base.
+        setSpoofing(true);
+        setLastScenario(kind);
+        queueAttack([], attackEpochs(5));
+        return;
+      }
+      // Everything else stages from the newest live fix — with no live fix
+      // there is nothing to attack, and inventing one is banned.
+      const base = fixesRef.current[fixesRef.current.length - 1];
+      if (!base) return;
       setSpoofing(true);
       setLastScenario(kind);
-      const base = fixesRef.current[fixesRef.current.length - 1] ?? defaultFix();
       switch (kind) {
         case 'teleport':
           queueAttack(buildSpoofFixes(base, 5), []);
-          break;
-        case 'cno':
-          queueAttack([], attackEpochs(5));
           break;
         case 'altitude':
           queueAttack(buildAltitudeSpoofFixes(base, 5), []);
@@ -456,7 +486,6 @@ export function useAnchorPipeline() {
     imuRef.current = [];
     baroRef.current = [];
     gnssRef.current = [];
-    lastStateRef.current = null;
     lastFixTsRef.current = null;
     lastImuTsRef.current = null;
     lastBaroTsRef.current = null;
@@ -469,20 +498,22 @@ export function useAnchorPipeline() {
     setTelemetry(null);
     setSdk(createAnchorSDK());
   }, []);
-
   /**
    * TEST HARNESS (armed only): full real RECOVERY arc on the real machine —
-   * fresh state machine, staged attack drives TRUSTED→DEGRADED→DENIED, the
+   * fresh state machine, staged attack drives TRUSTED→DEGRADED/DENIED, the
    * frames then age out of the window, 5 clean evaluations elapse, the machine
-   * enters RECOVERING, and the next clean evaluation returns TRUSTED. Nothing
-   * every transition is the real machine; the harness only stages the attack frames.
+   * enters RECOVERING, and the next clean evaluation returns TRUSTED. Every
+   * transition is the real machine; the harness only stages the attack frames
+   * and requires a live fix to stage from.
    */
   const recoveryDemo = useCallback(() => {
     if (!demoArmed) return;
+    const base = fixesRef.current[fixesRef.current.length - 1];
+    if (!base) return; // never invent a synthetic base
     reset();
     setSpoofing(true);
     setLastScenario('compound');
-    queueAttack(buildSpoofFixes(defaultFix(), 5), attackEpochs(5));
+    queueAttack(buildSpoofFixes(base, 5), attackEpochs(5));
   }, [demoArmed, reset, queueAttack, attackEpochs]);
 
   return {

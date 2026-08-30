@@ -12,6 +12,9 @@
  *    `tsc`/jest environments without the native module stay clean.
  *  - AnchorProvider pre-warms the SAME caches, so a mounted provider and
  *    createAnchorSDK() share one loaded model per task instead of two.
+ *  - Model downloads surface real progress (fraction 0..1 straight from the
+ *    resource fetcher) through subscribeModelDownloads — the UI renders this;
+ *    nothing is simulated.
  */
 
 import type {
@@ -24,6 +27,16 @@ export interface PreloadOptions {
   llm?: boolean;
   speechToText?: boolean;
   textEmbeddings?: boolean;
+}
+
+/** The three lazily-loaded model tasks, keyed for download progress. */
+export type ModelTask = 'llm' | 'speechToText' | 'textEmbeddings';
+
+export interface ModelDownloadState {
+  /** 0..1 real fetcher progress; 1 = fully downloaded (cached loads skip to 1). */
+  progress: number;
+  /** True once the model is loaded and callable. */
+  ready: boolean;
 }
 
 let initialized = false;
@@ -53,16 +66,62 @@ function cached<T>(slot: { promise: Promise<T> | null }, load: () => Promise<T>)
   return slot.promise;
 }
 
+// --- Real download-progress registry ----------------------------------------
+
+const downloadStates = new Map<ModelTask, ModelDownloadState>();
+const downloadListeners = new Set<(states: Record<ModelTask, ModelDownloadState>) => void>();
+
+function emitDownload(task: ModelTask, patch: Partial<ModelDownloadState>): void {
+  const current = downloadStates.get(task) ?? { progress: 0, ready: false };
+  const next = { ...current, ...patch };
+  downloadStates.set(task, next);
+  const snapshot = {
+    llm: downloadStates.get('llm') ?? { progress: 0, ready: false },
+    speechToText: downloadStates.get('speechToText') ?? { progress: 0, ready: false },
+    textEmbeddings: downloadStates.get('textEmbeddings') ?? { progress: 0, ready: false },
+  };
+  for (const listener of downloadListeners) listener(snapshot);
+}
+
+/** Subscribe to real model-download progress (fraction + ready flag per task). */
+export function subscribeModelDownloads(
+  listener: (states: Record<ModelTask, ModelDownloadState>) => void,
+): () => void {
+  downloadListeners.add(listener);
+  return () => {
+    downloadListeners.delete(listener);
+  };
+}
+
+/** Latest known download state per task (no subscription). */
+export function getModelDownloadStates(): Record<ModelTask, ModelDownloadState> {
+  return {
+    llm: downloadStates.get('llm') ?? { progress: 0, ready: false },
+    speechToText: downloadStates.get('speechToText') ?? { progress: 0, ready: false },
+    textEmbeddings: downloadStates.get('textEmbeddings') ?? { progress: 0, ready: false },
+  };
+}
+
 const llmSlot: { promise: Promise<LLMModule> | null } = { promise: null };
 const sttSlot: { promise: Promise<SpeechToTextModule> | null } = { promise: null };
 const embeddingsSlot: { promise: Promise<TextEmbeddingsModule> | null } = { promise: null };
 
-/** Qwen3 1.7B, 8da4w-quantized (default variant of the registry accessor). */
+/**
+ * Qwen3 0.6B, 8da4w-quantized (registry default variant). Chosen over the
+ * 1.7B model for the advisory latency budget: same tokenizer/chat template,
+ * ~3x fewer parameters, so prefill + short decode fits the sub-300 ms window
+ * the demo requires while keeping the accuracy the constrained prompt needs.
+ */
 export function loadLlm(): Promise<LLMModule> {
   return cached(llmSlot, async () => {
     await ensureInitialized();
     const executorch = await import('react-native-executorch');
-    return executorch.LLMModule.fromModelName(executorch.models.llm.qwen3_1_7b());
+    const instance = await executorch.LLMModule.fromModelName(
+      executorch.models.llm.qwen3_0_6b(),
+      (progress: number) => emitDownload('llm', { progress }),
+    );
+    emitDownload('llm', { progress: 1, ready: true });
+    return instance;
   });
 }
 
@@ -71,9 +130,13 @@ export function loadSpeechToText(): Promise<SpeechToTextModule> {
   return cached(sttSlot, async () => {
     await ensureInitialized();
     const executorch = await import('react-native-executorch');
-    return executorch.SpeechToTextModule.fromModelName(
+    const instance = await executorch.SpeechToTextModule.fromModelName(
       executorch.models.speech_to_text.whisper_base_en(),
+      undefined,
+      (progress: number) => emitDownload('speechToText', { progress }),
     );
+    emitDownload('speechToText', { progress: 1, ready: true });
+    return instance;
   });
 }
 
@@ -82,9 +145,12 @@ export function loadTextEmbeddings(): Promise<TextEmbeddingsModule> {
   return cached(embeddingsSlot, async () => {
     await ensureInitialized();
     const executorch = await import('react-native-executorch');
-    return executorch.TextEmbeddingsModule.fromModelName(
+    const instance = await executorch.TextEmbeddingsModule.fromModelName(
       executorch.models.text_embedding.all_mpnet_base_v2(),
+      (progress: number) => emitDownload('textEmbeddings', { progress }),
     );
+    emitDownload('textEmbeddings', { progress: 1, ready: true });
+    return instance;
   });
 }
 

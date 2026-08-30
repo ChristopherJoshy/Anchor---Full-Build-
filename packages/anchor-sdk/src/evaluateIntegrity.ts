@@ -5,19 +5,23 @@ import { temporalCheck } from './physics/temporalCheck';
 import { altitudeCheck } from './physics/altitudeCheck';
 import { environmentalCheck } from './physics/environmentalCheck';
 import { cn0Check } from './physics/cn0Check';
+import { networkCheck } from './physics/networkCheck';
 
 /**
  * Deterministic RAIM/FDE-style state machine transitions.
  *
  * Rules (per evaluation over the given window):
- *  - all six checks pass:
- *      TRUSTED/DEGRADED/none -> TRUSTED
- *      DENIED                -> stays DENIED until RECOVERY_DEBOUNCE
- *                               consecutive clean evaluations have elapsed,
- *                               then RECOVERING (entering RECOVERING marks the
- *                               end of the debounce); the next clean
- *                               evaluation after that -> TRUSTED
- *      RECOVERING            -> TRUSTED
+ *  - all seven checks pass:
+ *      TRUSTED              -> TRUSTED
+ *      DEGRADED             -> stays DEGRADED until RECOVERY_DEBOUNCE
+ *                              consecutive clean evaluations have elapsed
+ *                              (cleanStreak counts), then RECOVERING
+ *      DENIED               -> stays DENIED until RECOVERY_DEBOUNCE
+ *                              consecutive clean evaluations have elapsed,
+ *                              then RECOVERING (entering RECOVERING marks the
+ *                              end of the debounce); the next clean
+ *                              evaluation after that -> TRUSTED
+ *      RECOVERING           -> TRUSTED
  *  - one non-critical check fails:
  *      TRUSTED/DEGRADED/none -> DEGRADED
  *      DENIED/RECOVERING     -> DENIED (never relax on a failing evaluation;
@@ -25,17 +29,23 @@ import { cn0Check } from './physics/cn0Check';
  *  - two or more checks fail, or the critical pair kinematic+cn0 or
  *    kinematic+heading fails: -> DENIED from any state
  *
+ * No state ever returns to TRUSTED directly: every inconsistency must ride
+ * out the full clean-evaluation debounce through RECOVERING, so a glitching
+ * feed can never flicker the instrument back to trust.
+ *
  * All counting lives in the machine state carried between calls
  * (`cleanStreak`), so every function here is pure: same inputs -> same
  * outputs, no module-level state.
  */
 
-/** Consecutive clean evaluations required to leave DENIED. */
+/** Consecutive clean evaluations required to leave DENIED or DEGRADED. */
 export const RECOVERY_DEBOUNCE = 5;
 
 /**
  * Relative weight of each check in the confidence score. Kinematic and cn0
- * are the strongest spoof discriminators and dominate the score.
+ * are the strongest spoof discriminators and dominate the score. Network is
+ * the weakest single signal (a VPN is common and legitimate) — it drops the
+ * score but never alone decides the state.
  */
 const CHECK_WEIGHTS: Record<CheckId, number> = {
   kinematic: 0.25,
@@ -43,7 +53,8 @@ const CHECK_WEIGHTS: Record<CheckId, number> = {
   heading: 0.15,
   temporal: 0.1,
   altitude: 0.1,
-  environmental: 0.15,
+  environmental: 0.1,
+  network: 0.15,
 };
 
 /** Check pairs whose joint failure means an active attack, not drift. */
@@ -59,6 +70,7 @@ const CHECKS: Array<{ id: CheckId; run: (window: SensorWindow) => CheckResult }>
   { id: 'altitude', run: altitudeCheck },
   { id: 'environmental', run: environmentalCheck },
   { id: 'cn0', run: cn0Check },
+  { id: 'network', run: networkCheck },
 ];
 
 /** Stateful carrier for the recovery debounce, owned by the caller. */
@@ -101,6 +113,9 @@ function reasonFor(
     if (state === 'DENIED') {
       return `recovery debounce ${next.cleanStreak}/${RECOVERY_DEBOUNCE} clean evaluations`;
     }
+    if (state === 'DEGRADED') {
+      return `re-earning trust: ${next.cleanStreak}/${RECOVERY_DEBOUNCE} clean evaluations since the last inconsistency`;
+    }
     if (state === 'RECOVERING') {
       return `recovery debounce satisfied after ${next.cleanStreak} clean evaluations`;
     }
@@ -140,6 +155,11 @@ export function stepIntegrity(
     } else if (prev.state === 'RECOVERING') {
       cleanStreak = prev.cleanStreak + 1;
       state = 'TRUSTED';
+    } else if (prev.state === 'DEGRADED') {
+      // A degraded instrument must re-earn trust through the same debounce
+      // as a denied one — never snap straight back to TRUSTED.
+      cleanStreak = prev.cleanStreak + 1;
+      state = cleanStreak >= RECOVERY_DEBOUNCE ? 'RECOVERING' : 'DEGRADED';
     } else {
       state = 'TRUSTED';
     }
@@ -168,16 +188,20 @@ export function stepIntegrity(
 
 /**
  * Stateless evaluation per the public AnchorSDK contract: derives the
- * transition from `prevState` alone. From DENIED a clean window maps to
- * RECOVERING (the debounce-counted path is available via `stepIntegrity`,
- * which `createAnchorSDK().evaluate` uses).
+ * transition from `prevState` alone. From DENIED or DEGRADED a clean window
+ * maps to RECOVERING (the debounce-counted path is available via
+ * `stepIntegrity`, which `createAnchorSDK().evaluate` uses).
  */
 export function evaluateIntegrity(window: SensorWindow, prevState?: IntegrityState): EvaluateResult {
   // Stateless view: the machine is reconstructed from prevState alone. A
-  // DENIED input is assumed to have its debounce already elapsed, so a clean
-  // window maps straight to RECOVERING.
+  // DENIED or DEGRADED input is assumed to have its debounce already
+  // elapsed, so a clean window maps straight to RECOVERING.
   const machine: IntegrityMachine | undefined = prevState
-    ? { state: prevState, cleanStreak: prevState === 'DENIED' ? RECOVERY_DEBOUNCE - 1 : 0 }
+    ? {
+        state: prevState,
+        cleanStreak:
+          prevState === 'DENIED' || prevState === 'DEGRADED' ? RECOVERY_DEBOUNCE - 1 : 0,
+      }
     : undefined;
   const { verdict } = stepIntegrity(window, machine);
   return verdict;

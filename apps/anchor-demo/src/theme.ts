@@ -22,8 +22,11 @@ export const colors = {
   textOnColor: '#0C1116',
 } as const;
 
-/** The one state color, per the semantic rule. */
-export function colorForIntegrityState(state: IntegrityState): string {
+/**
+ * The one state color, per the semantic rule. 'NETWORK' recorder rows are
+ * informational chrome — never a trusted/caution/denied semantic.
+ */
+export function colorForIntegrityState(state: IntegrityState | 'NETWORK'): string {
   switch (state) {
     case 'TRUSTED':
       return colors.trusted;
@@ -32,6 +35,8 @@ export function colorForIntegrityState(state: IntegrityState): string {
       return colors.caution;
     case 'DENIED':
       return colors.denied;
+    case 'NETWORK':
+      return colors.textMuted;
   }
 }
 

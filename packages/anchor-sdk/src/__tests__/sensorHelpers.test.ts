@@ -41,7 +41,7 @@ describe('locationToFix', () => {
       timestamp: 5,
     } as unknown as LocationObject;
     const fix = locationToFix(location);
-    expect(fix.altitude).toBe(0);
+    expect(fix.altitude).toBeNaN();
     expect(fix.accuracy).toBe(Number.POSITIVE_INFINITY);
     expect(fix.speed).toBe(0);
     expect(fix.bearing).toBe(0);

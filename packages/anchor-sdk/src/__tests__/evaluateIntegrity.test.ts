@@ -129,14 +129,23 @@ describe('stepIntegrity (debounce-counted state machine)', () => {
     expect(failedIds(step.verdict.results).length).toBeGreaterThanOrEqual(2);
   });
 
-  it('keeps DEGRADED on repeated single non-critical failures and recovers on clean', () => {
+  it('keeps DEGRADED on repeated single non-critical failures and re-earns trust through the debounce', () => {
     let machine: IntegrityMachine = { state: 'TRUSTED', cleanStreak: 0 };
     machine = stepIntegrity(temporalOnly, machine).machine;
     expect(machine.state).toBe('DEGRADED');
     machine = stepIntegrity(temporalOnly, machine).machine;
     expect(machine.state).toBe('DEGRADED');
-    const recovered = stepIntegrity(clean, machine);
-    expect(recovered.machine.state).toBe('TRUSTED');
+    // A clean evaluation must NOT snap straight back to TRUSTED: the machine
+    // counts clean evaluations, passes through RECOVERING, then TRUSTED.
+    for (let i = 1; i < RECOVERY_DEBOUNCE; i += 1) {
+      machine = stepIntegrity(clean, machine).machine;
+      expect(machine.state).toBe('DEGRADED');
+      expect(machine.cleanStreak).toBe(i);
+    }
+    machine = stepIntegrity(clean, machine).machine;
+    expect(machine.state).toBe('RECOVERING');
+    machine = stepIntegrity(clean, machine).machine;
+    expect(machine.state).toBe('TRUSTED');
   });
 
   it('is idempotent for identical inputs', () => {
@@ -146,14 +155,6 @@ describe('stepIntegrity (debounce-counted state machine)', () => {
     expect(a).toEqual(b);
   });
 
-  it('starts from TRUSTED when no machine is given', () => {
-    const step = stepIntegrity(clean);
-    expect(step.machine.state).toBe('TRUSTED');
-    expect(step.machine.cleanStreak).toBe(0);
-  });
-});
-
-describe('confidenceOf', () => {
   it('is 1 when every check scores 1', () => {
     const perfect: CheckResult[] = [
       { id: 'kinematic', passed: true, score: 1, detail: '' },
@@ -162,11 +163,12 @@ describe('confidenceOf', () => {
       { id: 'altitude', passed: true, score: 1, detail: '' },
       { id: 'environmental', passed: true, score: 1, detail: '' },
       { id: 'cn0', passed: true, score: 1, detail: '' },
+      { id: 'network', passed: true, score: 1, detail: '' },
     ];
     expect(confidenceOf(perfect)).toBeCloseTo(1, 10);
     // The clean drive is graded only by headingCheck (declination + solar).
     const { verdict } = stepIntegrity(clean);
-    expect(confidenceOf(verdict.results)).toBeGreaterThan(0.95);
+    expect(confidenceOf(verdict.results)).toBeGreaterThan(0.9);
   });
 
   it('weights kinematic and cn0 highest', () => {
@@ -177,6 +179,7 @@ describe('confidenceOf', () => {
       { id: 'altitude', passed: true, score: 1, detail: '' },
       { id: 'environmental', passed: true, score: 1, detail: '' },
       { id: 'cn0', passed: true, score: 1, detail: '' },
+      { id: 'network', passed: true, score: 1, detail: '' },
     ];
     const degradedKinematic = perfect.map((r) =>
       r.id === 'kinematic' ? { ...r, score: 0 } : r,

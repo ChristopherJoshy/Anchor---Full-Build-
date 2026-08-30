@@ -35,6 +35,7 @@ export { temporalCheck } from './physics/temporalCheck';
 export { altitudeCheck, barometricAltitudeMeters, BARO_REFERENCE_PRESSURE_HPA } from './physics/altitudeCheck';
 export { environmentalCheck } from './physics/environmentalCheck';
 export { cn0Check } from './physics/cn0Check';
+export { networkCheck } from './physics/networkCheck';
 export { solarCompassHeading } from './physics/solarCompass';
 export { haversineMeters, forwardBearingDeg, circularDiffDeg, clamp01 } from './physics/geo';
 
@@ -51,9 +52,15 @@ export {
 // Public SDK (state machine owner + lazy AI that can never touch state).
 export { createAnchorSDK } from './ai/createAnchorSDK';
 export { AnchorProvider, type AnchorProviderProps } from './ai/AnchorProvider';
-export { explainVerdict, buildExplanationPrompt } from './ai/explainVerdict';
-export { transcribeCommand } from './ai/transcribeCommand';
+export { explainVerdict, buildExplanationPrompt, ADVISORY_LATENCY_BUDGET_MS } from './ai/explainVerdict';
+export {
+  subscribeModelDownloads,
+  getModelDownloadStates,
+  type ModelTask,
+  type ModelDownloadState,
+} from './ai/executorchRuntime';
 export { embedText } from './ai/embedText';
+export { transcribeCommand } from './ai/transcribeCommand';
 
 // Shared contract types.
 export type {

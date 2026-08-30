@@ -8,7 +8,7 @@
 
 export type IntegrityState = 'TRUSTED' | 'DEGRADED' | 'DENIED' | 'RECOVERING';
 
-export type CheckId = 'kinematic' | 'heading' | 'temporal' | 'altitude' | 'environmental' | 'cn0';
+export type CheckId = 'kinematic' | 'heading' | 'temporal' | 'altitude' | 'environmental' | 'cn0' | 'network';
 
 /** Result of one physics consistency check. `score` is 0..1, 1 = fully consistent. */
 export interface CheckResult {
@@ -56,12 +56,23 @@ export interface GnssMeasurementSample {
   elapsedRealtimeNanos?: number;
 }
 
-/** A chronological slice of every sensor stream the pipeline consumes. */
+/** One OS-level network-integrity sample (real AnchorNet probe output). */
+export interface NetworkSignal {
+  /** True when a VPN tunnel is up (tun/tap interface or TRANSPORT_VPN). */
+  vpnActive: boolean;
+}
+
 export interface SensorWindow {
   fixes: Fix[];
   imu: ImuSample[];
   baro: BaroSample[];
   gnss: GnssMeasurementSample[];
+  /**
+   * OS-level network-integrity signal for the current instant (AnchorNet).
+   * Optional: when absent the network check passes with a "no signal" note
+   * rather than inventing a value.
+   */
+  network?: NetworkSignal;
 }
 
 /** The output of the deterministic integrity evaluation over a SensorWindow. */

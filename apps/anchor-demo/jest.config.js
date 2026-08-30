@@ -7,6 +7,6 @@ module.exports = {
   clearMocks: true,
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-native-reanimated|react-native-worklets|anchor-sdk|@expo/.*)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-native-reanimated|react-native-worklets|anchor-sdk|@expo/.*|standard-navigation/.*)',
   ],
 };

@@ -31,9 +31,8 @@ export function environmentalCheck(window: SensorWindow): CheckResult {
   for (let i = 0; i < fixes.length; i += 1) {
     const fix = fixes[i];
     const fixProblems: string[] = [];
-    if (!Number.isFinite(fix.altitude) || fix.altitude < MIN_ALTITUDE_M || fix.altitude > MAX_ALTITUDE_M) {
-      const altStr = Number.isFinite(fix.altitude) ? `${fix.altitude.toFixed(0)} m` : String(fix.altitude);
-      fixProblems.push(`altitude ${altStr} outside [-450, 9000] m`);
+    if (Number.isFinite(fix.altitude) && (fix.altitude < MIN_ALTITUDE_M || fix.altitude > MAX_ALTITUDE_M)) {
+      fixProblems.push(`altitude ${fix.altitude.toFixed(0)} m outside [-450, 9000] m`);
     }
     if (!Number.isFinite(fix.speed) || fix.speed < MIN_SPEED_MS || fix.speed > MAX_SPEED_MS) {
       const speedStr = Number.isFinite(fix.speed) ? `${fix.speed.toFixed(1)} m/s` : String(fix.speed);

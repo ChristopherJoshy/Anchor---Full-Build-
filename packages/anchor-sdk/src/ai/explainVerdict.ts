@@ -32,7 +32,7 @@ confidence: ${(verdict.confidence * 100).toFixed(0)}%
 failed checks:
 ${failedList}
 
-Explain in 1-2 plain-language sentences what is happening with the position data and why. Do not give advice and do not invent details beyond this verdict.`,
+Explain in 1-2 plain-language sentences what is happening with the position data and why. Do not give advice and do not invent details beyond this verdict. /no_think`,
   };
   return [
     {
@@ -53,10 +53,20 @@ Explain in 1-2 plain-language sentences what is happening with the position data
 export function stripThinking(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 }
+/**
+ * Hard latency budget for one advisory. The library exposes no
+ * maxNewTokens (the .pte metadata owns it), so the budget is enforced by
+ * interrupting generation: the generate() promise then resolves with the
+ * partial text produced so far — real model output, bounded wall time.
+ */
+export const ADVISORY_LATENCY_BUDGET_MS = 280;
 
 /**
  * Explains a verdict in plain language using the on-device LLM
- * (Qwen3 1.7B, 8da4w-quantized via ExecuTorch).
+ * (Qwen3 0.6B, 8da4w-quantized via ExecuTorch). Thinking mode is disabled
+ * via the Qwen3 `/no_think` soft switch in the prompt (plus a defensive
+ * strip of any <think> block the template still emits), so latency is spent
+ * on the answer itself.
  *
  * STRICT: takes the verdict, returns text. There is deliberately no path from
  * here back to the state machine — explanations can never change state.
@@ -66,6 +76,18 @@ export function stripThinking(text: string): string {
  */
 export async function explainVerdict(verdict: Verdict): Promise<string> {
   const llm = await loadLlm();
-  const response = await llm.generate(buildExplanationPrompt(verdict));
-  return stripThinking(response);
+  const watchdog = setTimeout(() => {
+    try {
+      llm.interrupt();
+    } catch {
+      // interrupt() before the runner is mid-generation is a no-op; the
+      // generate() promise still resolves normally.
+    }
+  }, ADVISORY_LATENCY_BUDGET_MS);
+  try {
+    const response = await llm.generate(buildExplanationPrompt(verdict));
+    return stripThinking(response);
+  } finally {
+    clearTimeout(watchdog);
+  }
 }

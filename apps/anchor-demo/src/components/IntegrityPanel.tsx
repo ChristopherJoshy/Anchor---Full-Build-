@@ -26,10 +26,10 @@ export function IntegrityPanel({ verdict, reasoning, advisorySource, detMs }: In
         <View style={styles.header}>
           <Text style={styles.headerTitle}>INTEGRITY • RAIM/FDE</Text>
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>6 CHECKS • DETERMINISTIC</Text>
+            <Text style={styles.badgeText}>7 CHECKS • DETERMINISTIC</Text>
           </View>
         </View>
-        <Text style={styles.standby}>Awaiting first fix — six physics checks idle</Text>
+        <Text style={styles.standby}>Awaiting first fix — seven consistency checks idle</Text>
       </View>
     );
   }
@@ -42,7 +42,7 @@ export function IntegrityPanel({ verdict, reasoning, advisorySource, detMs }: In
         <Text style={styles.headerTitle}>INTEGRITY • RAIM/FDE</Text>
         <View style={styles.badge}>
           <Text style={styles.badgeText}>
-            EVAL {detMs !== null ? `${detMs.toFixed(1)}MS` : '—'} • 6 CHECKS
+            EVAL {detMs !== null ? `${detMs.toFixed(1)}MS` : '—'} • 7 CHECKS
           </Text>
         </View>
       </View>
@@ -66,8 +66,8 @@ export function IntegrityPanel({ verdict, reasoning, advisorySource, detMs }: In
 
       <Text style={styles.source}>
         {advisorySource === 'model'
-          ? 'ADVISORY: Qwen3 1.7B 8DA4W · ExecuTorch XNNPACK — live on-device model output'
-          : 'ADVISORY: deterministic summary — Qwen3 model loading/available on device'}
+          ? 'ADVISORY: Qwen3 0.6B 8DA4W · ExecuTorch XNNPACK — live on-device model output, ≤280ms cap'
+          : 'ADVISORY: deterministic summary — Qwen3 model loading on device'}
       </Text>
     </View>
   );

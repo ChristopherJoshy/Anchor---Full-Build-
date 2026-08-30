@@ -43,7 +43,9 @@ function feed(fixture: Fixture, i: number): void {
 }
 
 const CHECK_LABELS = ['KINEMATIC', 'HEADING', 'TEMPORAL', 'ALTITUDE', 'ENVIRONMENTAL', 'CN0'];
-const WALK_LENGTH = 20;
+/** Feeds the ENTIRE fixture: the spoofed-jump teleport lands at frame ~105,
+ * so a partial walk never reaches the attack. */
+const WALK_LENGTH = 120;
 
 describe('dashboard with real SDK physics', () => {
   it(

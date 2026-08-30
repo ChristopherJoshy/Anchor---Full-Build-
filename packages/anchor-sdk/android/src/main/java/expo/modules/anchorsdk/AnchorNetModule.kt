@@ -25,12 +25,16 @@ class AnchorNetModule : Module() {
         Function("isVpnActive") {
             val context = appContext.reactContext
 
-            // Probe 1: kernel tunnel interfaces (tun0/tap0 — any VPN implementation).
+            // Probe 1: kernel tunnel interfaces (tunN/tapN — any VPN implementation).
+            // Numbered match only: the kernel's always-present IPIP device
+            // "tunl0" shares the prefix but is not a user VPN.
             try {
+                val tunRegex = Regex("^tun[0-9]+$")
+                val tapRegex = Regex("^tap[0-9]+$")
                 val interfaces = NetworkInterface.getNetworkInterfaces()
                 while (interfaces.hasMoreElements()) {
                     val name = interfaces.nextElement().name.lowercase()
-                    if (name.startsWith("tun") || name.startsWith("tap")) {
+                    if (tunRegex.containsMatchIn(name) || tapRegex.containsMatchIn(name)) {
                         return@Function true
                     }
                 }
@@ -38,14 +42,19 @@ class AnchorNetModule : Module() {
                 // Interface enumeration denied — fall through to transport probe.
             }
 
-            // Probe 2: active network carries the VPN transport.
             if (context != null) {
                 try {
                     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-                    val network = cm?.activeNetwork
-                    val caps = network?.let { cm.getNetworkCapabilities(it) }
-                    if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
-                        return@Function true
+                    if (cm != null) {
+                        // Any network carrying TRANSPORT_VPN counts — not just the
+                        // default: split-tunnel VPNs leave the default network
+                        // un-capped while the VPN network exists.
+                        for (network in cm.allNetworks) {
+                            val caps = cm.getNetworkCapabilities(network)
+                            if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                                return@Function true
+                            }
+                        }
                     }
                 } catch (_: Exception) {
                     // Connectivity service unavailable.

@@ -33,21 +33,39 @@ export function altitudeCheck(window: SensorWindow): CheckResult {
   if (window.baro.length < 2) {
     return { id: 'altitude', passed: true, score: 1, detail: 'no barometer' };
   }
-  const p0 = window.baro[0].pressureHpa;
-  const p1 = window.baro[window.baro.length - 1].pressureHpa;
-  const a0 = fixes[0].altitude;
-  const a1 = fixes[fixes.length - 1].altitude;
-  if (!Number.isFinite(p0) || !Number.isFinite(p1) || p0 <= 0 || p1 <= 0 || !Number.isFinite(a0) || !Number.isFinite(a1)) {
-    return { id: 'altitude', passed: false, score: 0, detail: `non-finite or non-positive pressure/altitude` };
+
+  // Only fixes with usable (finite) GPS altitude participate; NaN means the
+  // provider reported no altitude and inventing a value would poison the delta.
+  const usable = fixes.filter((fix) => Number.isFinite(fix.altitude));
+  if (usable.length < 2) {
+    return { id: 'altitude', passed: true, score: 1, detail: 'no usable GPS altitude (< 2 fixes report one)' };
+  }
+  const first = usable[0];
+  const last = usable[usable.length - 1];
+
+  // Time-align the barometric endpoints to the same interval the GPS delta
+  // spans: a steady climb must not fail just because the baro buffer covers a
+  // shorter window than the fix window.
+  const baroInSpan = window.baro.filter(
+    (sample) => Number.isFinite(sample.pressureHpa) && sample.timestamp >= first.timestamp && sample.timestamp <= last.timestamp,
+  );
+  const baroEndpoints = baroInSpan.length >= 2
+    ? [baroInSpan[0], baroInSpan[baroInSpan.length - 1]]
+    : null;
+  if (baroEndpoints === null) {
+    return { id: 'altitude', passed: true, score: 1, detail: 'no barometer samples inside the GPS altitude span' };
+  }
+  const p0 = baroEndpoints[0].pressureHpa;
+  const p1 = baroEndpoints[1].pressureHpa;
+  if (p0 <= 0 || p1 <= 0) {
+    return { id: 'altitude', passed: false, score: 0, detail: 'non-positive pressure' };
   }
 
-  const gpsDelta = a1 - a0;
-  const baroFirst = barometricAltitudeMeters(p0);
-  const baroLast = barometricAltitudeMeters(p1);
-  const baroDelta = baroLast - baroFirst;
+  const gpsDelta = last.altitude - first.altitude;
+  const baroDelta = barometricAltitudeMeters(p1) - barometricAltitudeMeters(p0);
   const divergence = Math.abs(gpsDelta - baroDelta);
   if (!Number.isFinite(divergence)) {
-    return { id: 'altitude', passed: false, score: 0, detail: `non-finite altitude divergence` };
+    return { id: 'altitude', passed: false, score: 0, detail: 'non-finite altitude divergence' };
   }
 
   // Score falls linearly from 1 at the limit to 0 at twice the limit.
