@@ -141,9 +141,14 @@ export default function DashboardScreen() {
 
   // Advisory text: the REAL on-device Qwen3 output once the model produces it;
   // until then the deterministic machine's own reason (labeled in the panel).
-  const lastExplanation = pipeline.events[0]?.explanation ?? null;
-  const advisorySource: 'model' | 'deterministic' =
-    lastExplanation && lastExplanation !== '(explanation unavailable)' ? 'model' : 'deterministic';
+  // Newest explanation from a real machine transition — the newest ENTRY is
+  // often a NETWORK recorder row (no explanation), which must not hide the
+  // model's advisory for the latest transition.
+  const lastExplanation =
+    pipeline.events.find(
+      (e) => e.explanation !== null && e.explanation !== '(explanation unavailable)',
+    )?.explanation ?? null;
+  const advisorySource: 'model' | 'deterministic' = lastExplanation ? 'model' : 'deterministic';
 
   // Real network events into the flight recorder. The first poll only seeds
   // the ref — a tunnel that simply isn't up yet is not a "cleared" event.

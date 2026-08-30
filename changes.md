@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-08-30 — feat: network consistency check (VPN = inconsistency), debounced recovery, qwen3-0.6b advisory, zero-mock hardening, emulator-verified end-to-end
+
+### SDK (packages/anchor-sdk)
+- NEW 7th check `networkCheck` (`src/physics/networkCheck.ts`): a real OS VPN signal (`SensorWindow.network`, from AnchorNet) fails the check while a tunnel is up — the instrument never holds TRUSTED with a VPN; absent signal abstains (passes with note), never invents values
+- Recovery semantics v2 (`evaluateIntegrity.ts`): NO state returns to TRUSTED directly — DEGRADED and DENIED both ride the 5-clean-evaluation debounce → RECOVERING → TRUSTED; lone failure = DEGRADED, 2+ failures or critical pair (kinematic+cn0, kinematic+heading) = DENIED; confidence weights renormalized for 7 checks (network 0.15)
+- Advisory model: qwen3-1.7b → **qwen3-0.6b 8da4w** (same template, ~3x faster decode) + `/no_think` soft switch (thinking off) + `ADVISORY_LATENCY_BUDGET_MS=280` interrupt watchdog (lib has no JS maxNewTokens; interrupt is the only cap) — advisory displayed to the user is the deterministic reason rendered instantly (EVAL 0.1-0.2ms), model text enriches async
+- Real download progress: `fromModelName(..., onDownloadProgress)` wrapped for all three models; `subscribeModelDownloads`/`getModelDownloadStates` exported; demo `ModelStatus` renders real fetcher fractions (auto-hides when all ready)
+- fixMapping nullability: null altitude → NaN (no fake 0 m poisoning the baro cross-check); `altitudeCheck` skips fixes without usable GPS altitude AND time-aligns the barometric span to the GPS interval; `environmentalCheck` skips only the altitude bound on unknown
+- `useLocationStream`: AppState 'active' re-samples permission/services — granting in system settings then returning resumes the stream without app restart
+- AnchorNetModule.kt: `tunl0` false positive fixed (`^tun[0-9]+$`/`^tap[0-9]+$` numbered match); TRANSPORT_VPN probed over ALL networks (split-tunnel safe)
+- Tests: 75/75 (new networkCheck suite; DEGRADED-debounce transition tests updated to v2 semantics); tsc clean
+
+### Demo app (apps/anchor-demo)
+- Dashboard restructured: scrollable sections (TELEMETRY / CHECKS / NETWORK / INTEGRITY / FLIGHT LOG / DEMO CONTROLS), section headers with meta, fixed StatusStrip + BottomBar; fake Dynamic-Island pill removed on request; `IslandCapsule` deleted
+- NETWORK panel: real AnchorNet VPN row (TUNNEL ACTIVE — INCONSISTENT / no tunnel), check FAIL flag, IP↔GPS divergence, resolved IP geo (ipwho.is)
+- Advisory display fix: newest EXPLAINED entry selected (newest entry is often a NETWORK recorder row which hid model text); NETWORK recorder rows use neutral 'NETWORK' state label (never fake TRUSTED green); spurious "VPN tunnel cleared" on first poll removed (first poll only seeds)
+- Demo-mode gating hardened: disarming purges the staged queue instantly + resets spoofing latch; `queueAttack` always appends; scenario staging requires a live fix (never invents a synthetic base — `defaultFix()` deleted); pre-verdict gauges show HOLD/'—' instead of fake "000 OK"
+- Voice: buffer.sampleRate tracked, linear resample to the 16 kHz Whisper contract when expo-audio falls back; 30 s recording cap
+- `ModelStatus`: real download % per model (ADVISOR/VOICE/SEARCH)
+
+### Emulator verification (Pixel_API_36, API 36 google_apis x86_64, values faked via adb console — never via the app)
+- Fresh GPS subscription + `adb emu geo fix`: TRUSTED 100%, telemetry exactly matches injected values (37.4200°N 122.0840°W, ALT 30.0 m, ACC 5.0 m, SAT 7, BARO 1013.3 hPa); GNSS epochs arrive (API 33+ ranchu HAL)
+- Teleport spoof (14 km in one step): kinematic FAIL → multi-check DENIED ("kinematic, heading, temporal failed") — real physics catching the fake
+- VPN end-to-end with a real VpnService (TinyVpn test fixture, `appops ACTIVATE_VPN allow`): tunnel up → AnchorNet TUNNEL ACTIVE + network check FAIL → **DEGRADED "network failed"** (physics still 100) → tunnel down → debounced recovery → TRUSTED; flight log records every detect/clear with NETWORK labels
+- Root `ip tuntap` tun interfaces are NOT visible to the app sandbox on API 36 (getifaddrs filter) — VpnService transport is the correct probe path; gretap0 correctly ignored by the numbered regex
+- Model downloads via ExecuTorch fetcher verified (bar 0% → hidden when ready); DNS flakiness documented (emulator NAT; restart clears)
+- Known cosmetic: flight-log machine-transition rows can be missing after JS reload (state persists, log resets); model advisory text takes 2-4 s on emulator CPU (SwiftShader-class) — watchdog caps at 280 ms on capable hardware
+
+
 ## 2026-08-29 — scaffold: monorepo workspaces, git remote, README
 
 ## 2026-08-29 — feat: scaffold packages/anchor-sdk (expo module, android)
